@@ -8,6 +8,7 @@ import random
 import yaml
 from huggingface_hub import list_repo_refs
 import shutil
+import argparse
 
 def run_server(cmd_string):
     try:
@@ -61,24 +62,24 @@ def find_available_port(start, end):
                 continue  # Port is in use, try another one
             
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--repo_id", type=str, required=True)
+    # EleutherAI/pythia-6.9b, EleutherAI/pythia-12b
+    parser.add_argument("--cudas", type=str, default="0,1,2,3")
+    args = parser.parse_args()
+    
     os.chdir('./src')
-    available_cudas = "4,5,6,7"
-    tensor_parallel_size = len(available_cudas.split(","))
+    tensor_parallel_size = len(args.cudas.split(","))
     assert tensor_parallel_size in (1, 2, 4, 8)
     
-    model_ckpt_folder = "/lfs/skampere1/0/yuhengtu/helm/src/pythia_ckpt"
+    model_ckpt_folder = f"/lfs/skampere1/0/yuhengtu/helm/src/{args.repo_id.split('/')[1]}_ckpt"
     
-    repo_id = "EleutherAI/pythia-6.9b"
-    refs = list_repo_refs(repo_id)
+    refs = list_repo_refs(args.repo_id)
     branches = refs.branches
     versions = [branch.name for branch in branches]
     versions.remove("main")
     versions = sorted(versions, key=lambda x: int(x.split("step")[1]))
-    # versions = [version for version in versions if not os.path.exists("benchmark_output/runs/mmlu_pythia-6.9b-" + version)]
-    # versions = ["step10000", "step100000"]
-    
     benchmarks = ["classic", "lite", "mmlu"]
-    # benchmarks = ["mmlu"]
     benchmark2arg = {
         "classic": {
             "conf_paths": "helm/benchmark/presentation/run_entries_reeval_classic_new.conf",
@@ -100,7 +101,7 @@ if __name__ == "__main__":
         }
     }
     
-    for version in versions[123:]:
+    for version in versions:
         print(f"#################{version}", flush=True)
         
         port = find_available_port(1000, 9999)
@@ -109,7 +110,7 @@ if __name__ == "__main__":
         with open('helm/config/model_deployments.yaml', 'r') as file:
             data = yaml.safe_load(file)
         
-        data["model_deployments"][0]["client_spec"]["args"]["base_url"] = 'http://0.0.0.0:' + str(port) + '/v1/'
+        data["model_deployments"][1]["client_spec"]["args"]["base_url"] = 'http://0.0.0.0:' + str(port) + '/v1/'
 
         with open('helm/config/model_deployments.yaml', 'w') as file:
             yaml.safe_dump(data, file)
@@ -117,16 +118,16 @@ if __name__ == "__main__":
         # run vllm server
         try:
             vllm_cmd_string = (
-                "CUDA_VISIBLE_DEVICES=" + available_cudas +
+                "CUDA_VISIBLE_DEVICES=" + args.cudas +
                 " python -m vllm.entrypoints.openai.api_server" +
-                " --model EleutherAI/pythia-6.9b" +
+                " --model " + args.repo_id +
                 " --port " + str(port) +
                 " --tensor-parallel-size " + str(tensor_parallel_size) +
                 " --revision " + version +
                 " --download-dir " + model_ckpt_folder
             )
             vllm_process = run_server(vllm_cmd_string)
-            time.sleep(220)
+            time.sleep(300)
         except Exception as error:
             print(f"vllm server error: {error}", flush=True)
             continue
@@ -138,7 +139,7 @@ if __name__ == "__main__":
             max_eval_instances = benchmark2arg[benchmark]["max_eval_instances"]
             schema = benchmark2arg[benchmark]["schema"]
             priority = benchmark2arg[benchmark]["priority"]
-            suite_name = benchmark + "_pythia-6.9b-" + version
+            suite_name = benchmark + "_" + args.repo_id.split("/")[1] + "-" + version
             
             # run helm-run
             helm_run_cmd_string = "helm-run" + \
@@ -147,7 +148,7 @@ if __name__ == "__main__":
                 " --max-eval-instances " + str(max_eval_instances) + \
                 " --priority " +  str(priority) + \
                 " --suite " + suite_name + \
-                " --models-to-run EleutherAI/pythia-6.9b" + \
+                " --models-to-run " + args.repo_id + \
                 " --disable-cache"
                 
             
