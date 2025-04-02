@@ -77,6 +77,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
     model_name = args.repo_id.split("/")[1]
     
+    model2pattern = {
+        "EleutherAI/pythia-6.9b": "step",
+        "EleutherAI/pythia-12b": "step",
+        "LLM360/Amber": "ckpt_"
+    }
+    pattern = model2pattern[args.repo_id]
+
     # Load all splits from the dataset
     dataset = load_dataset("stair-lab/reeval-difficulty-for-helm")
 
@@ -106,15 +113,15 @@ if __name__ == "__main__":
     results = results.pivot(index="request.model", columns=["request.prompt", "scenario"], values="dicho_score")
     
     # Reindex the DataFrame according to the step order
-    sorted_index = sorted(results.index, key=lambda x: int(x.split("step")[-1]))
+    sorted_index = sorted(results.index, key=lambda x: int(x.split(pattern)[-1]))
     results = results.reindex(sorted_index)
     
     # Sort the columns by scenario groups
     results = results.sort_index(axis=1, level="scenario")
 
-    # Remove columns that are all 0 or all 1 and fill missing values with -1 temporarily
-    results = results.loc[:, (results != 0).any()]
-    results = results.loc[:, (results != 1).any()]
+    # # Remove columns that are all 0 or all 1 and fill missing values with -1 temporarily
+    # results = results.loc[:, (results != 0).any()]
+    # results = results.loc[:, (results != 1).any()]
     results = results.fillna(-1).astype(int)
     # Replace -1 with NaN so that missing scores are ignored during visualization
     results = results.replace(-1, np.nan)
