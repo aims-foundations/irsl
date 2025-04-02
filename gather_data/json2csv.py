@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 from os.path import exists
+import argparse
 
 lo = lambda x: json.load(open(x, "r"))
 
@@ -23,15 +24,26 @@ def infer_column_types(df):
             df[col] = df[col].astype("string").astype("category")
 
 if __name__ == "__main__":
-    BENCHMARKS = ["classic", "mmlu", "lite"]
-    benchmark_dir = "/lfs/skampere1/0/yuhengtu/helm/src/benchmark_output/runs"
-
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--repo_id", type=str, required=True)
+    # EleutherAI/pythia-6.9b, EleutherAI/pythia-12b, LLM360/Amber
+    args = parser.parse_args()
+    
+    model2benchmarkdir = {
+        "EleutherAI/pythia-6.9b": "/lfs/skampere1/0/yuhengtu/deval/helm/src/benchmark_output/runs",
+        "EleutherAI/pythia-12b": "/lfs/skampere1/0/yuhengtu/deval/helm/src/benchmark_output/runs",
+        "LLM360/Amber": "/lfs/skampere1/0/sttruong/helm/src/benchmark_output/runs"
+    }
+    benchmark_dir = model2benchmarkdir[args.repo_id]
+    
     task2metric = lo("task2metric.json")
     task2metric = pd.json_normalize(task2metric)
+    BENCHMARKS = ["classic", "mmlu", "lite"]
+    model_name = args.repo_id.split("/")[1]
 
     all_paths = []
     for benchmark in BENCHMARKS:
-        dirs = [d for d in os.listdir(benchmark_dir) if d.startswith(benchmark)]
+        dirs = [d for d in os.listdir(benchmark_dir) if d.startswith(benchmark) and d.split(f"{benchmark}_")[1].startswith(model_name)]
         for d in dirs:
             full_d_path = f"{benchmark_dir}/{d}"
             if os.path.isdir(full_d_path):
@@ -40,7 +52,6 @@ if __name__ == "__main__":
                 ]
                 all_paths.extend([f"{full_d_path}/{sub}" for sub in subdirs])
     files = ["display_requests.json", "display_predictions.json", "run_spec.json"]
-    all_paths = [path for path in all_paths if not os.path.basename(path).endswith("step111000")]
     all_paths = [p for p in tqdm(all_paths) if all([exists(f"{p}/{f}") for f in files])]
     all_lists = [[lo(f"{p}/{f}") for p in tqdm(all_paths)] for f in files]
 
@@ -86,4 +97,4 @@ if __name__ == "__main__":
     print("Started saving results")
     output_dir = "../data/"
     os.makedirs(output_dir, exist_ok=True)
-    results.to_pickle(f"{output_dir}/responses.pkl")
+    results.to_pickle(f"{output_dir}/responses_{model_name}.pkl")

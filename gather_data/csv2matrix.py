@@ -6,6 +6,7 @@ from tueplots import bundles
 import matplotlib.colors as mcolors
 from datasets import load_dataset
 import os
+import argparse
 
 def visualize_response_matrix(results, value, filename):
     # Extract the groups labels in the order of the columns
@@ -70,6 +71,12 @@ def visualize_response_matrix(results, value, filename):
         plt.close()
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--repo_id", type=str, required=True)
+    # EleutherAI/pythia-6.9b, EleutherAI/pythia-12b, LLM360/Amber
+    args = parser.parse_args()
+    model_name = args.repo_id.split("/")[1]
+    
     # Load all splits from the dataset
     dataset = load_dataset("stair-lab/reeval-difficulty-for-helm")
 
@@ -82,7 +89,7 @@ if __name__ == "__main__":
             prompt_to_z[prompt] = z_value
 
     # Load your pre-generated responses pickle file.
-    with open(f"../data/responses.pkl", "rb") as f:
+    with open(f"../data/responses_{model_name}.pkl", "rb") as f:
         results_full = pickle.load(f)
 
     results_full = results_full.sample(frac=1).reset_index(drop=True)
@@ -133,7 +140,7 @@ if __name__ == "__main__":
 
     output_dir = "../result/"
     os.makedirs(output_dir, exist_ok=True)
-    visualize_response_matrix(results, results, "response_matrix")
+    visualize_response_matrix(results, results, f"response_matrix_{model_name}")
     
     new_columns = []
     for col in results.columns:
@@ -146,5 +153,5 @@ if __name__ == "__main__":
     results.columns = pd.MultiIndex.from_tuples(new_columns, names=["request.prompt", "z", "scenario"])
     
     # Save the final results with the new column level
-    with open("../data/results.pkl", "wb") as f:
+    with open(f"../data/results_{model_name}.pkl", "wb") as f:
         pickle.dump(results, f)
