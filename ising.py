@@ -3,12 +3,13 @@ import torch
 from tqdm import tqdm
 from torchmetrics import AUROC
 import torch.nn.functional as F
+from torch.distributions import Bernoulli
 BCE = F.binary_cross_entropy
 auroc = AUROC(task="binary")
 verbose = True
 gpuid = 0
 
-data = torch.tensor(pd.read_csv('MetData.csv').values, device=f'cuda:{gpuid}', dtype=torch.float32)
+data = torch.tensor(pd.read_csv('MetData.csv').values, dtype=torch.float32)
 N, P = data.shape
 subsets = []
 leftovers = []
@@ -20,7 +21,7 @@ for i in range(P):
     mask[i] = False
     subset = data[:, mask] # shape: (N, P-1)
     # add a one column to the subset
-    subset = torch.cat((subset, torch.ones(N, 1, device=f'cuda:{gpuid}')), dim=1) # shape: (N, P)
+    subset = torch.cat((subset, torch.ones(N, 1)), dim=1) # shape: (N, P)
     leftover = data[:, i].unsqueeze(1) # shape: (N, 1)
 
     subsets.append(subset.unsqueeze(2)) # shape: (N, P-1, 1)
@@ -75,7 +76,7 @@ def trainer(parameters, optim, closure, verbose=True, epochs=1000):
 
     return parameters
 
-step_size = 512
+step_size = 1024
 for i in tqdm(range(0, P, step_size)):
     B = min(step_size, P - i)
     W = torch.randn((P, n_rhos, B), device=f'cuda:{gpuid}', requires_grad=True)
@@ -88,13 +89,14 @@ for i in tqdm(range(0, P, step_size)):
     def closure():
         optimizer.zero_grad()
         logits = torch.einsum('ijp,jkp->ikp', inputs_, W) # shape: (N, n_rhos, P)
-        loss = BCE(torch.sigmoid(logits), labels_, reduction='none') # shape: (N, n_rhos, P)
+        probs = torch.sigmoid(logits)
+        loss = -Bernoulli(probs=probs).log_prob(labels_) # shape: (N, n_rhos, P)
         loss = loss.mean(dim=0) + rho_seqs_ * torch.norm(W, p=1, dim=0) # >> shape: (n_rhos, P)
         loss = loss.mean()
         loss.backward()
         return loss
 
-    W = trainer([W], optimizer, closure, verbose=False)[0]
+    W = trainer([W], optimizer, closure, verbose=True)[0]
     logits = torch.einsum('ijp,jkp->ikp', inputs_, W) # shape: (N, n_rhos, P)
     auc = auroc(torch.sigmoid(logits), labels_)
     print(f"AUC: {auc.item()}")
