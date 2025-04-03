@@ -14,6 +14,7 @@ N, P = data.shape
 subsets = []
 leftovers = []
 n_rhos = 100
+gamma = 0.25
 
 for i in range(P):
     # Mask to remove i-th column
@@ -77,26 +78,38 @@ def trainer(parameters, optim, closure, verbose=True, epochs=1000):
     return parameters
 
 step_size = 1024
+Ws = []
 for i in tqdm(range(0, P, step_size)):
     B = min(step_size, P - i)
     W = torch.randn((P, n_rhos, B), device=f'cuda:{gpuid}', requires_grad=True)
     optimizer = torch.optim.LBFGS([W], lr=0.01, max_iter=1000, history_size=10, line_search_fn='strong_wolfe')
 
-    inputs_ = inputs[:, :, i:i+B].to(f'cuda:{gpuid}')
-    labels_ = labels[:, :, i:i+B].to(f'cuda:{gpuid}')
-    rho_seqs_ = rho_seqs[:, i:i+B].to(f'cuda:{gpuid}')
+    inputs_ = inputs[:, :, i:i+B].to(f'cuda:{gpuid}') # shape: (N, P-1, B)
+    labels_ = labels[:, :, i:i+B].to(f'cuda:{gpuid}') # shape: (N, n_rhos, B)
+    rho_seqs_ = rho_seqs[:, i:i+B].to(f'cuda:{gpuid}') # shape: (n_rhos, B)
 
     def closure():
         optimizer.zero_grad()
-        logits = torch.einsum('ijp,jkp->ikp', inputs_, W) # shape: (N, n_rhos, P)
+        logits = torch.einsum('ijp,jkp->ikp', inputs_, W) # shape: (N, n_rhos, B)
         probs = torch.sigmoid(logits)
-        loss = -Bernoulli(probs=probs).log_prob(labels_) # shape: (N, n_rhos, P)
-        loss = loss.mean(dim=0) + rho_seqs_ * torch.norm(W, p=1, dim=0) # >> shape: (n_rhos, P)
+        loss = -Bernoulli(probs=probs).log_prob(labels_) # shape: (N, n_rhos, B)
+        loss = loss.mean(dim=0) + rho_seqs_ * torch.norm(W, p=1, dim=0) # shape: (n_rhos, B)
         loss = loss.mean()
         loss.backward()
         return loss
 
-    W = trainer([W], optimizer, closure, verbose=True)[0]
-    logits = torch.einsum('ijp,jkp->ikp', inputs_, W) # shape: (N, n_rhos, P)
-    auc = auroc(torch.sigmoid(logits), labels_)
+    W = trainer([W], optimizer, closure, verbose=True)[0] # shape: (P, n_rhos, B)
+    logits = torch.einsum('ijp,jkp->ikp', inputs_, W) # shape: (N, n_rhos, B)
+    probs = torch.sigmoid(logits)
+    loss = -Bernoulli(probs=probs).log_prob(labels_) # shape: (N, n_rhos, B)
+    J = torch.count_nonzero(W, dim=0) # shape: (n_rhos, B)
+    ebic = -2*loss.mean(dim=0) + J*torch.log(N) + 2*gamma*J*torch.log(P-1) # shape: (n_rhos, B)
+    min_idx = ebic.argmin(dim=0)  # shape: (B,)
+    W = W[:, min_idx, torch.arange(W.shape[2])]  # shape: (P, B)
+    
+    auc = auroc(torch.sigmoid(inputs_@W), labels_[:,0,:])
     print(f"AUC: {auc.item()}")
+    Ws.append(W)
+
+Ws = torch.cat(Ws, dim=2) # shape: (P, P)
+torch.save(Ws, 'W.pt')

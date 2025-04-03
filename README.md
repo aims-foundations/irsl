@@ -1,13 +1,13 @@
 ```
-conda create --name deavl python=3.10 -y
-conda activate deavl
+conda create --name deval python=3.10 -y
+conda activate deval
 pip install -r requirements.txt
 ```
 
 ```
-conda create -n rpsy r-base=4.3 -c conda-forge
-conda activate rpsy
-conda install -c conda-forge r-psychonetrics
+conda create -n deval_R r-base=4.3 -c conda-forge -y
+conda activate deval_R
+conda install -c conda-forge r-psychonetrics -y
 ```
 
 ```
