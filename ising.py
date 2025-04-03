@@ -115,5 +115,5 @@ for i in tqdm(range(0, P, step_size)):
     Ws.append(W)
     torch.save(W, f'W_{i}.pt')
 
-Ws = torch.cat(Ws, dim=2) # shape: (P, P)
+Ws = torch.cat(Ws, dim=1) # shape: (P, P)
 torch.save(Ws, 'W.pt')
