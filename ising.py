@@ -7,9 +7,9 @@ from torch.distributions import Bernoulli
 BCE = F.binary_cross_entropy
 auroc = AUROC(task="binary")
 verbose = True
-gpuid = 0
+gpuid = 1
 
-data = torch.tensor(pd.read_csv('MetData.csv').values, dtype=torch.float32)
+data = torch.tensor(pd.read_csv('gsm_hard_easy.csv').values, dtype=torch.float32)
 N, P = data.shape
 subsets = []
 leftovers = []
@@ -103,13 +103,17 @@ for i in tqdm(range(0, P, step_size)):
     probs = torch.sigmoid(logits)
     loss = -Bernoulli(probs=probs).log_prob(labels_) # shape: (N, n_rhos, B)
     J = torch.count_nonzero(W, dim=0) # shape: (n_rhos, B)
-    ebic = -2*loss.mean(dim=0) + J*torch.log(N) + 2*gamma*J*torch.log(P-1) # shape: (n_rhos, B)
+    ebic = -2 * loss.mean(dim=0) \
+       + J * torch.log(torch.tensor(N, dtype=torch.float32)) \
+       + 2 * gamma * J * torch.log(torch.tensor(P - 1, dtype=torch.float32)) # shape: (n_rhos, B)
     min_idx = ebic.argmin(dim=0)  # shape: (B,)
     W = W[:, min_idx, torch.arange(W.shape[2])]  # shape: (P, B)
     
-    auc = auroc(torch.sigmoid(inputs_@W), labels_[:,0,:])
+    logits = torch.einsum('ijp,jp->ip', inputs_, W) # shape: (N, B)
+    auc = auroc(torch.sigmoid(logits), labels_[:,0,:])
     print(f"AUC: {auc.item()}")
     Ws.append(W)
+    torch.save(W, f'W_{i}.pt')
 
 Ws = torch.cat(Ws, dim=2) # shape: (P, P)
 torch.save(Ws, 'W.pt')
