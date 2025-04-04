@@ -25,12 +25,12 @@ if __name__ == "__main__":
 
     # Add nodes with names and color attributes:
     # The first 100 nodes are 'e1' to 'e100' (blue) and the next 100 nodes are 'd1' to 'd100' (red)
-    for i in range(200):
-        if i < 100:
+    for i in range(17):
+        if i < 10:
             node_name = f"e{i+1}"
             node_color = "blue"
         else:
-            node_name = f"d{i-99}"
+            node_name = f"d{i-9}"
             node_color = "red"
         G.add_node(i, name=node_name, color=node_color)
 
@@ -38,8 +38,8 @@ if __name__ == "__main__":
     # An edge exists between node i and node j if both W[i,j] and W[j,i] are nonzero.
     # The edge weight is the average of W[i,j] and W[j,i].
     edge_weights = []
-    for i in range(200):
-        for j in range(i+1, 200):
+    for i in range(17):
+        for j in range(i+1, 17):
             if W[i, j] != 0 and W[j, i] != 0:
                 weight = (W[i, j] + W[j, i]) / 2.0
                 # if weight > 2:  # Only add edges with weight greater than a threshold
@@ -61,7 +61,7 @@ if __name__ == "__main__":
         else:
             norm = 0
         # Invert normalized value: high weight gives low intensity (darker)
-        intensity = 1 - norm
+        intensity = norm
         # Use matplotlib's grayscale colormap to obtain an RGBA color tuple
         edge_colors.append(plt.cm.Greys(intensity))
 
