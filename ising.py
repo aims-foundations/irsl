@@ -79,6 +79,7 @@ def trainer(parameters, optim, closure, verbose=True, epochs=1000):
 
 step_size = 1024
 Ws = []
+final_rhos = []
 for i in tqdm(range(0, P, step_size)):
     B = min(step_size, P - i)
     W = torch.randn((P, n_rhos, B), device=f'cuda:{gpuid}', requires_grad=True)
@@ -103,10 +104,12 @@ for i in tqdm(range(0, P, step_size)):
     probs = torch.sigmoid(logits)
     loss = -Bernoulli(probs=probs).log_prob(labels_) # shape: (N, n_rhos, B)
     J = torch.count_nonzero(W, dim=0) # shape: (n_rhos, B)
-    ebic = -2 * loss.mean(dim=0) \
+    ebic = 2 * loss.mean(dim=0) \
        + J * torch.log(torch.tensor(N, dtype=torch.float32)) \
        + 2 * gamma * J * torch.log(torch.tensor(P - 1, dtype=torch.float32)) # shape: (n_rhos, B)
     min_idx = ebic.argmin(dim=0)  # shape: (B,)
+    final_rho_batch = rho_seqs_[min_idx, torch.arange(B)]  # shape: (B,)
+    final_rhos.append(final_rho_batch.cpu())
     W = W[:, min_idx, torch.arange(W.shape[2])]  # shape: (P, B)
     
     logits = torch.einsum('ijp,jp->ip', inputs_, W) # shape: (N, B)
@@ -117,3 +120,9 @@ for i in tqdm(range(0, P, step_size)):
 
 Ws = torch.cat(Ws, dim=1) # shape: (P, P)
 torch.save(Ws, 'W.pt')
+
+final_rhos = torch.cat(final_rhos, dim=0)  # shape: (P,)
+
+# Save final picked rho as a CSV file with P rows and 1 column
+df_rhos = pd.DataFrame(final_rhos.unsqueeze(1).numpy(), columns=["rho"])
+df_rhos.to_csv("final_picked_rho.csv", index=False)

@@ -42,9 +42,9 @@ if __name__ == "__main__":
         for j in range(i+1, 200):
             if W[i, j] != 0 and W[j, i] != 0:
                 weight = (W[i, j] + W[j, i]) / 2.0
-                if weight > 2:  # Only add edges with weight greater than a threshold
-                    G.add_edge(i, j, weight=weight)
-                    edge_weights.append(weight)
+                # if weight > 2:  # Only add edges with weight greater than a threshold
+                G.add_edge(i, j, weight=weight)
+                edge_weights.append(weight)
 
     # Determine minimum and maximum edge weights (to map weights to grayscale)
     min_weight = min(edge_weights)
@@ -65,6 +65,17 @@ if __name__ == "__main__":
         # Use matplotlib's grayscale colormap to obtain an RGBA color tuple
         edge_colors.append(plt.cm.Greys(intensity))
 
+    # Normalize edge weights for width scaling (e.g., between 0.5 and 3.0)
+    edge_widths = []
+    for u, v in G.edges():
+        weight = G[u][v]['weight']
+        if max_weight > min_weight:
+            norm = (weight - min_weight) / (max_weight - min_weight)
+        else:
+            norm = 0
+        width = 0 + norm * 6  # scale to [0, 6]
+        edge_widths.append(width)
+    
     # Prepare node colors and labels for drawing
     node_color_list = [data['color'] for _, data in G.nodes(data=True)]
     node_labels = {i: data['name'] for i, data in G.nodes(data=True)}
@@ -78,9 +89,9 @@ if __name__ == "__main__":
     # Draw node labels (display the node name)
     nx.draw_networkx_labels(G, pos, labels=node_labels, font_size=8)
     # Draw edges with very thin lines and the computed grayscale colors
-    nx.draw_networkx_edges(G, pos, width=0.5, edge_color=edge_colors)
+    nx.draw_networkx_edges(G, pos, width=edge_widths, edge_color=edge_colors)
 
     plt.axis('off')
     plt.title("Graph Visualization")
-    plt.savefig("graph_visualization.png", dpi=600, bbox_inches="tight")
+    plt.savefig("graph_visualization.png", dpi=300, bbox_inches="tight")
     plt.close()
