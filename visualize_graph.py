@@ -28,10 +28,10 @@ if __name__ == "__main__":
     for i in range(17):
         if i < 10:
             node_name = f"e{i+1}"
-            node_color = "blue"
+            node_color = "green"
         else:
             node_name = f"d{i-9}"
-            node_color = "red"
+            node_color = "purple"
         G.add_node(i, name=node_name, color=node_color)
 
     # Add edges based on the rule:
@@ -46,34 +46,45 @@ if __name__ == "__main__":
                 G.add_edge(i, j, weight=weight)
                 edge_weights.append(weight)
 
-    # Determine minimum and maximum edge weights (to map weights to grayscale)
-    min_weight = min(edge_weights)
-    max_weight = max(edge_weights)
+    pos_weights = [w for w in edge_weights if w > 0]
+    neg_weights = [w for w in edge_weights if w < 0]
+    if pos_weights:
+        pos_min = min(pos_weights)
+        pos_max = max(pos_weights)
+    if neg_weights:
+        # For negatives, we'll normalize based on the absolute values.
+        neg_min_abs = min(abs(w) for w in neg_weights)
+        neg_max_abs = max(abs(w) for w in neg_weights)
 
-    # Compute edge colors based on weight:
-    # High weight -> darker (closer to black), low weight -> lighter (gray)
+    # Compute edge colors and widths based on weight:
+    # Positive weights: use blue (darker blue for larger positive values)
+    # Negative weights: use red (darker red for larger absolute negative values)
     edge_colors = []
-    for u, v in G.edges():
-        weight = G[u][v]['weight']
-        # Normalize the weight between 0 and 1
-        if max_weight > min_weight:
-            norm = (weight - min_weight) / (max_weight - min_weight)
-        else:
-            norm = 0
-        # Invert normalized value: high weight gives low intensity (darker)
-        intensity = norm
-        # Use matplotlib's grayscale colormap to obtain an RGBA color tuple
-        edge_colors.append(plt.cm.Greys(intensity))
-
-    # Normalize edge weights for width scaling (e.g., between 0.5 and 3.0)
     edge_widths = []
     for u, v in G.edges():
         weight = G[u][v]['weight']
-        if max_weight > min_weight:
-            norm = (weight - min_weight) / (max_weight - min_weight)
+        if weight > 0:
+            if pos_max > pos_min:
+                norm = (weight - pos_min) / (pos_max - pos_min)
+            else:
+                norm = 0
+            # Map normalized positive weight to blue: higher norm -> darker blue
+            color = plt.cm.Blues(norm)
+            width = 1 + norm * 5  # edge width scaled between 1 and 6
+        elif weight < 0:
+            abs_weight = abs(weight)
+            if neg_max_abs > neg_min_abs:
+                norm = (abs_weight - neg_min_abs) / (neg_max_abs - neg_min_abs)
+            else:
+                norm = 0
+            # Map normalized absolute negative weight to red: higher norm -> darker red
+            color = plt.cm.Reds(norm)
+            width = 1 + norm * 5  # edge width scaled between 1 and 6
         else:
-            norm = 0
-        width = 0 + norm * 6  # scale to [0, 6]
+            # Fallback for zero (if ever encountered)
+            color = (0.5, 0.5, 0.5, 1)  # gray
+            width = 1
+        edge_colors.append(color)
         edge_widths.append(width)
     
     # Prepare node colors and labels for drawing
@@ -81,7 +92,7 @@ if __name__ == "__main__":
     node_labels = {i: data['name'] for i, data in G.nodes(data=True)}
 
     # Draw the graph
-    plt.figure(figsize=(30, 30))
+    plt.figure(figsize=(10, 10))
     pos = nx.spring_layout(G, seed=42)  # layout for positioning nodes
 
     # Draw nodes with their colors

@@ -1,11 +1,9 @@
 import pandas as pd
+import numpy as np
 import torch
 from tqdm import tqdm
-from torchmetrics import AUROC
-import torch.nn.functional as F
 from torch.distributions import Bernoulli
-import numpy as np
-BCE = F.binary_cross_entropy
+from torchmetrics import AUROC
 auroc = AUROC(task="binary")
 verbose = True
 gpuid = 1
@@ -92,7 +90,7 @@ for seed in range(1):
     torch.manual_seed(seed)
     step_size = 1024
     Ws = []
-    picked_rho = []
+    picked_rhos = []
     for i in tqdm(range(0, P, step_size)):
         B = min(step_size, P - i)
         W = torch.randn((P, n_rhos, B), device=f'cuda:{gpuid}', requires_grad=True)
@@ -111,27 +109,29 @@ for seed in range(1):
 
         def closure():
             optimizer.zero_grad()
-            logits = torch.einsum('ijp,jkp->ikp', inputs_train, W) # shape: (N, n_rhos, B)
+            logits = torch.einsum('ijp,jkp->ikp', inputs_train, W) # shape: (N_train, n_rhos, B)
             probs = torch.sigmoid(logits)
-            loss = -Bernoulli(probs=probs).log_prob(labels_train) # shape: (N, n_rhos, B)
+            loss = -Bernoulli(probs=probs).log_prob(labels_train) # shape: (N_train, n_rhos, B)
             loss = loss.mean(dim=0) + rho_seqs_ * torch.norm(W, p=1, dim=0) # shape: (n_rhos, B)
             loss = loss.mean()
             loss.backward()
             return loss
-6
+
         W = trainer([W], optimizer, closure, verbose=True)[0] # shape: (P, n_rhos, B)
-        logits = torch.einsum('ijp,jkp->ikp', inputs_train, W) # shape: (N, n_rhos, B)
-        probs = torch.sigmoid(logits)
-        loss = -Bernoulli(probs=probs).log_prob(labels_train) # shape: (N, n_rhos, B)
-        J = torch.count_nonzero(W, dim=0) # shape: (n_rhos, B)
-        breakpoint()
-        ebic = 2 * loss.mean(dim=0) \
-            + J * torch.log(torch.tensor(N, dtype=torch.float32)) \
-            + 2 * gamma * J * torch.log(torch.tensor(P - 1, dtype=torch.float32)) # shape: (n_rhos, B)
-        min_idx = ebic.argmin(dim=0)  # shape: (B,)
-        final_rho_batch = rho_seqs_[min_idx, torch.arange(B)]  # shape: (B,)
-        picked_rho.append(final_rho_batch.cpu())
-        W = W[:, min_idx, torch.arange(W.shape[2])]  # shape: (P, B)
+        logits_test = torch.einsum('ijp,jkp->ikp', inputs_test, W) # shape: (N_test, n_rhos, B)
+        best_rho_indices = []
+        for j in range (B):
+            auc_candidates = []
+            for i in range (n_rhos):
+                auc_candidate = auroc(torch.sigmoid(logits_test[:,i,j]), labels_test[:,i,j])
+                auc_candidates.append(auc_candidate)
+            auc_candidates = torch.stack(auc_candidates, dim=0) # shape: (n_rhos,)
+            best_rho_idx = auc_candidates.argmax(dim=0)
+            best_rho_indices.append(best_rho_idx)
+        best_rho_indices = torch.stack(best_rho_indices, dim=0) # shape: (B,)
+        picked_rho = rho_seqs_[best_rho_indices, torch.arange(B)]  # shape: (B,)
+        picked_rhos.append(picked_rho.cpu())
+        W = W[:, best_rho_indices, torch.arange(B)]  # shape: (P, B)
         
         logits_train = torch.einsum('ijp,jp->ip', inputs_train, W) # shape: (N, B)
         auc_train = auroc(torch.sigmoid(logits_train), labels_train[:,0,:])
@@ -145,14 +145,13 @@ for seed in range(1):
     Ws = torch.cat(Ws, dim=1) # shape: (P, P)
     torch.save(Ws, 'W.pt')
 
-    picked_rho = torch.cat(picked_rho, dim=0)  # shape: (P,)
+    picked_rhos = torch.cat(picked_rhos, dim=0)  # shape: (P,)
     df_rhos = pd.DataFrame({
         "min_rhos": min_rhos.numpy(),
-        "picked_rho": picked_rho.numpy(),
+        "picked_rho": picked_rhos.numpy(),
         "max_rhos": max_rhos.numpy(),
     })
     df_rhos.to_csv("final_picked_rho.csv", index=False)
 
 print(f"Train AUC: {np.mean(auc_trains):.4f} ± {np.std(auc_trains):.4f}")
 print(f"Test AUC:  {np.mean(auc_tests):.4f} ± {np.std(auc_tests):.4f}")
-
