@@ -16,6 +16,7 @@ n_rhos = 100
 gamma = 0.25
 train_percentage = 0.86
 N_train = int(N*train_percentage)
+n_seeds = 1
 
 for i in range(P):
     # Mask to remove i-th column
@@ -84,28 +85,28 @@ def trainer(parameters, optim, closure, verbose=True, epochs=1000):
 
     return parameters
 
-auc_trains = []
-auc_tests = []
-for seed in range(1):
-    torch.manual_seed(seed)
-    step_size = 1024
-    Ws = []
-    picked_rhos = []
-    for i in tqdm(range(0, P, step_size)):
-        B = min(step_size, P - i)
+step_size = 1024
+Ws = []
+picked_rhos = []
+for i in tqdm(range(0, P, step_size)):
+    B = min(step_size, P - i)
+    inputs_ = inputs[:, :, i:i+B].to(f'cuda:{gpuid}') # shape: (N, P-1, B)
+    labels_ = labels[:, :, i:i+B].to(f'cuda:{gpuid}') # shape: (N, n_rhos, B)
+    rho_seqs_ = rho_seqs[:, i:i+B].to(f'cuda:{gpuid}') # shape: (n_rhos, B)
+
+    auc_test_seeds = []
+    for seed in tqdm(range(n_seeds)):
         W = torch.randn((P, n_rhos, B), device=f'cuda:{gpuid}', requires_grad=True)
         optimizer = torch.optim.LBFGS([W], lr=0.01, max_iter=1000, history_size=10, line_search_fn='strong_wolfe')
-
+        
+        torch.manual_seed(seed)
         indices = torch.randperm(N)
         train_indices = indices[:N_train]
         test_indices = indices[N_train:]
-        inputs_ = inputs[:, :, i:i+B].to(f'cuda:{gpuid}') # shape: (N, P-1, B)
         inputs_train = inputs_[train_indices, :, :]
         inputs_test = inputs_[test_indices, :, :]
-        labels_ = labels[:, :, i:i+B].to(f'cuda:{gpuid}') # shape: (N, n_rhos, B)
         labels_train = labels_[train_indices, :, :]
         labels_test = labels_[test_indices, :, :]
-        rho_seqs_ = rho_seqs[:, i:i+B].to(f'cuda:{gpuid}') # shape: (n_rhos, B)
 
         def closure():
             optimizer.zero_grad()
@@ -118,40 +119,45 @@ for seed in range(1):
             return loss
 
         W = trainer([W], optimizer, closure, verbose=True)[0] # shape: (P, n_rhos, B)
+        W.data[torch.abs(W) < 1e-6] = 0.0
         logits_test = torch.einsum('ijp,jkp->ikp', inputs_test, W) # shape: (N_test, n_rhos, B)
-        best_rho_indices = []
+        auc_test_Bs = []
         for j in range (B):
-            auc_candidates = []
+            auc_test_rhos = []
             for i in range (n_rhos):
-                auc_candidate = auroc(torch.sigmoid(logits_test[:,i,j]), labels_test[:,i,j])
-                auc_candidates.append(auc_candidate)
-            auc_candidates = torch.stack(auc_candidates, dim=0) # shape: (n_rhos,)
-            best_rho_idx = auc_candidates.argmax(dim=0)
-            best_rho_indices.append(best_rho_idx)
-        best_rho_indices = torch.stack(best_rho_indices, dim=0) # shape: (B,)
-        picked_rho = rho_seqs_[best_rho_indices, torch.arange(B)]  # shape: (B,)
-        picked_rhos.append(picked_rho.cpu())
-        W = W[:, best_rho_indices, torch.arange(B)]  # shape: (P, B)
+                auc_test_rho = auroc(torch.sigmoid(logits_test[:,i,j]), labels_test[:,i,j])
+                auc_test_rhos.append(auc_test_rho)
+            auc_test_rhos = torch.stack(auc_test_rhos, dim=0) # shape: (n_rhos,)
+            auc_test_Bs.append(auc_test_rhos)
+        auc_test_Bs = torch.stack(auc_test_Bs, dim=1) # shape: (n_rhos, B)
+        auc_test_seeds.append(auc_test_Bs)
         
-        logits_train = torch.einsum('ijp,jp->ip', inputs_train, W) # shape: (N, B)
-        auc_train = auroc(torch.sigmoid(logits_train), labels_train[:,0,:])
-        auc_trains.append(auc_train.item())
-        logits_test = torch.einsum('ijp,jp->ip', inputs_test, W)
-        auc_test = auroc(torch.sigmoid(logits_test), labels_test[:,0,:])
-        auc_tests.append(auc_test.item())
-        Ws.append(W)
-        torch.save(W, f'W_{i}.pt')
+    auc_test_seeds = torch.stack(auc_test_seeds, dim=2) # shape: (n_rhos, B, n_seeds)
+    breakpoint()
+    auc_test_seeds = auc_test_seeds.mean(dim=2) # shape: (n_rhos, B)
+    # pick the largest (first) rho that has highest test AUC
+    best_rho_indices = auc_test_seeds.argmax(dim=0) # shape: (B,)
+    picked_rho = rho_seqs_[best_rho_indices, torch.arange(B)]  # shape: (B,)
+    picked_rhos.append(picked_rho.cpu())
+    W = W[:, best_rho_indices, torch.arange(B)]  # shape: (P, B)
+    nonzero_count = torch.count_nonzero(W)
+    print(f"nonzero_count: {nonzero_count}/{W.shape[0]*W.shape[1]}")
 
-    Ws = torch.cat(Ws, dim=1) # shape: (P, P)
-    torch.save(Ws, 'W.pt')
+    logits_train = torch.einsum('ijp,jp->ip', inputs_train, W) # shape: (N, B)
+    final_auc_train = auroc(torch.sigmoid(logits_train), labels_train[:,0,:])
+    logits_test = torch.einsum('ijp,jp->ip', inputs_test, W)
+    final_auc_test = auroc(torch.sigmoid(logits_test), labels_test[:,0,:])
+    print(f"final_auc_train: {final_auc_train}; final_auc_test: {final_auc_test}")
+    Ws.append(W)
+    torch.save(W, f'W_{i}.pt')
 
-    picked_rhos = torch.cat(picked_rhos, dim=0)  # shape: (P,)
-    df_rhos = pd.DataFrame({
-        "min_rhos": min_rhos.numpy(),
-        "picked_rho": picked_rhos.numpy(),
-        "max_rhos": max_rhos.numpy(),
-    })
-    df_rhos.to_csv("final_picked_rho.csv", index=False)
+Ws = torch.cat(Ws, dim=1) # shape: (P, P)
+torch.save(Ws, 'W.pt')
 
-print(f"Train AUC: {np.mean(auc_trains):.4f} ± {np.std(auc_trains):.4f}")
-print(f"Test AUC:  {np.mean(auc_tests):.4f} ± {np.std(auc_tests):.4f}")
+picked_rhos = torch.cat(picked_rhos, dim=0)  # shape: (P,)
+df_rhos = pd.DataFrame({
+    "min_rhos": min_rhos.numpy(),
+    "picked_rhos": picked_rhos.numpy(),
+    "max_rhos": max_rhos.numpy(),
+})
+df_rhos.to_csv("final_picked_rho.csv", index=False)
