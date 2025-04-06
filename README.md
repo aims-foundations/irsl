@@ -1,3 +1,14 @@
+Downloading GSM8K Responses from HELM Lite.
+Follow [Google's installation](https://cloud.google.com/sdk/docs/install) instructions to install gcloud.
+Then run:
+```
+export LOCAL_BENCHMARK_OUTPUT_PATH=../data/gather_helm_data/lite
+mkdir -p $LOCAL_BENCHMARK_OUTPUT_PATH
+export GCS_BENCHMARK_OUTPUT_PATH=gs://crfm-helm-public/lite/benchmark_output
+gcloud storage rsync -r $GCS_BENCHMARK_OUTPUT_PATH $LOCAL_BENCHMARK_OUTPUT_PATH
+```
+Ref: [CRFM HELM - Downloading Raw Results](https://crfm-helm.readthedocs.io/en/latest/downloading_raw_results/)
+
 ```
 conda create --name deval python=3.10 -y
 conda activate deval

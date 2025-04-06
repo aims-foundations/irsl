@@ -88,7 +88,6 @@ if __name__ == "__main__":
     infer_column_types(results)
     results.reset_index(drop=True, inplace=True)
     for col in results.columns:
-        # if results[col].dtype != "category" and np.isnan(results[col]).all():
         if results[col].dtype != "category" and results[col].isna().all():
             results = results.drop(columns=col)
         else:

@@ -9,6 +9,7 @@ helm/
 *.png
 *.npy
 *.pkl
+*.txt
 *.csv
 *.pt
 *.parquet
@@ -22,3 +23,9 @@ helm/
 */.ipynb_checkpoints/*
 **/*.ipynb_checkpoints/
 __pycache__/
+
+a.ipynb
+a.py
+
+google-cloud-sdk/
+google-cloud-cli-linux-x86_64.tar.gz
