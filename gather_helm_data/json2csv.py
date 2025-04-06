@@ -23,7 +23,7 @@ def infer_column_types(df):
             df[col] = df[col].astype("string").astype("category")
 
 if __name__ == "__main__":
-    input_dir = "../data/gather_helm_data"
+    input_dir = "/lfs/skampere1/0/sttruong/reeval/gather_helm_data/helm_jsons"
     BENCHMARKS = ["lite"]
     task2metric = lo("task2metric.json")
     task2metric = pd.json_normalize(task2metric)
@@ -32,8 +32,7 @@ if __name__ == "__main__":
     for benchmark in BENCHMARKS:
         dir_path = f"{input_dir}/{benchmark}/releases"
         assert exists(dir_path)
-        # latest_release = sorted(os.listdir(dir_path))[-1] # TODO: this is problemetic
-        latest_release = "v1.13.0"
+        latest_release = sorted(os.listdir(dir_path))[-1]
         folder_dict = lo(f"{dir_path}/{latest_release}/runs_to_run_suites.json")
         all_paths += [f"{input_dir}/{benchmark}/runs/{s}/{r}" for r, s in folder_dict.items()]
 
@@ -48,7 +47,7 @@ if __name__ == "__main__":
         run_specs = pd.json_normalize(run_specs)
         instances = pd.json_normalize(instances)
         
-        benchmark = paths.split("/")[3]
+        benchmark = paths.split("/")[8]
         run_specs["benchmark"] = benchmark
         run_specs = run_specs.loc[run_specs.index.repeat(d_predictions.shape[0])].reset_index(drop=True)
         
