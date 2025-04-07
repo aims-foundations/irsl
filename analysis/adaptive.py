@@ -1,23 +1,23 @@
 import pickle
 import torch
 torch.manual_seed(0)
-from tqdm import tqdm
 from torch.distributions import Bernoulli
+from tqdm import tqdm
 import matplotlib.pyplot as plt
-import numpy as np
 from tueplots import bundles
+bundles.icml2024()
+import argparse
 
-def estimate_theta(asked_ys, asked_zs, theta=0):
+def estimate_theta(asked_ys, asked_zs, device, theta_init=torch.zeros((1,))):
     def closure():
         optim.zero_grad()
-        probs = torch.sigmoid(theta[:, None] + asked_zs[None, :])
-        loss = -Bernoulli(probs=probs).log_prob(asked_ys).mean()
+        mask = ~torch.isnan(asked_ys)
+        probs = torch.sigmoid(theta + asked_zs)
+        loss = -Bernoulli(probs=probs[mask]).log_prob(asked_ys[mask]).mean()
         loss.backward()
         return loss
 
-    asked_ys = torch.tensor(asked_ys)
-    asked_zs = torch.tensor(asked_zs)
-    theta = theta.clone().requires_grad_(True)
+    theta = theta_init.clone().to(device).requires_grad_(True)
     optim = torch.optim.LBFGS([theta], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
     
     for iteration in range(100):
@@ -36,47 +36,79 @@ def estimate_theta(asked_ys, asked_zs, theta=0):
     
     return theta.detach()
 
-if __name__ == "__main__":
-    device = "cuda:4"
-    
-    # Load the results DataFrame which has a MultiIndex with levels "request.prompt", "z", "scenario"
-    with open("../data/results.pkl", "rb") as f:
-        results = pickle.load(f)
-    
-    mask = ~results.columns.get_level_values("z").isna()
-    results = results.loc[:, mask]
+def compute_fisher_info(theta, remain_zs):
+    p = torch.sigmoid(theta + remain_zs)
+    return p * (1 - p)
 
-    # Convert the DataFrame values into a torch tensor for the response matrix.
+def adap_test(ys, zs, device, gt, budget=50):
+    adaptive_theta_hat = torch.zeros((1,), device=device)
+    adaptive_asked_zs = []
+    adaptive_asked_ys = []
+    remain_zs = zs.clone()
+    remain_ys = ys.clone()
+    
+    pbar = tqdm(range(budget))
+    for _ in pbar:
+        fisher_info = compute_fisher_info(adaptive_theta_hat, remain_zs)
+        next_item = torch.argmax(fisher_info)
+        adaptive_asked_zs.append(remain_zs[next_item])
+        adaptive_asked_ys.append(remain_ys[next_item])
+        adaptive_theta_hat = estimate_theta(
+            torch.tensor(adaptive_asked_ys, device=device),
+            torch.tensor(adaptive_asked_zs, device=device),
+            device,
+            adaptive_theta_hat
+        )
+        pbar.set_postfix({
+            'adaptive': f"{adaptive_theta_hat.item():.2f}",
+            'gt': f"{gt.item():.2f}"
+        })
+        remain_zs = torch.cat([remain_zs[:next_item], remain_zs[next_item + 1:]])
+        remain_ys = torch.cat([remain_ys[:next_item], remain_ys[next_item + 1:]])
+    
+    return adaptive_theta_hat
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--repo_id", type=str, required=True)
+    # EleutherAI/pythia-6.9b, EleutherAI/pythia-12b, LLM360/Amber
+    args = parser.parse_args()
+    
+    model2pattern = {
+        "EleutherAI/pythia-6.9b": "step",
+        "EleutherAI/pythia-12b": "step",
+        "LLM360/Amber": "ckpt_"
+    }
+    pattern = model2pattern[args.repo_id]
+    
+    device = "cuda:4"
+    with open(f"../data/results_{args.repo_id.split('/')[1]}.pkl", "rb") as f:
+        results = pickle.load(f)
+    keep_cols = ~results.columns.get_level_values("z").isna()
+    results = results.loc[:, keep_cols]
+
     data = torch.tensor(results.values, dtype=torch.float, device=device)
     n_test_takers, n_items = data.shape
+    zs = results.columns.get_level_values("z").astype(float).to_numpy()
+    zs = torch.tensor(zs, dtype=torch.float, device=device)
+    time_steps = [int(name.split(pattern)[-1]) for name in results.index]
     
-    # Extract the z-values from the DataFrame columns (from level "z").
-    z_values = results.columns.get_level_values("z").astype(float).to_numpy()
-    z_tensor = torch.tensor(z_values, dtype=torch.float, device=device)
+    gt_thetas = []
+    adaptive_thetas = []
+    for i in tqdm(range(n_test_takers)):
+        # gt theta
+        ys = data[i, :]
+        gt_theta = estimate_theta(ys, zs, device)
+        gt_thetas.append(gt_theta.item())
+        
+        # adaptive theta
+        # adaptive_theta = adap_test(ys, zs, device, gt_theta)
+        # adaptive_thetas.append(adaptive_theta.item())
     
-    # Estimate theta for each test taker (each row in the response matrix)
-    estimated_thetas = []
-    for i in tqdm(range(n_test_takers), desc="Estimating theta for each test taker"):
-        asked_ys = data[i, :]  # responses for test taker i
-        # Initialize theta as a tensor (starting point 0) and estimate theta.
-        theta_est = estimate_theta(asked_ys, z_tensor, theta=torch.tensor([0.0], device=device))
-        estimated_thetas.append(theta_est.item())
-    
-    # Assuming the row index names contain the time step information,
-    # e.g., "step1", "step2", etc. We extract the numeric part:
-    time_steps = [int(name.split("step")[-1]) for name in results.index]
-    
-    # Plot the estimated theta values versus time steps using the ICML2024 TeX-style context.
     with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
         plt.figure(figsize=(8, 6))
-        plt.plot(time_steps, estimated_thetas, marker="o", linestyle="-")
+        plt.plot(time_steps, gt_thetas, marker="o", linestyle="-", label="Ground Truth Theta")
+        # plt.plot(time_steps, adaptive_thetas, marker="x", linestyle="--", label="Adaptive Theta")
         plt.xlabel("Time Step")
         plt.ylabel("Estimated Theta")
-        plt.title("Estimated Theta vs. Time Step")
-        plt.grid(True)
-        plt.tight_layout()
-        plt.savefig("theta_vs_time.png", dpi=300)
-        plt.show()
-    
-    print("Estimated theta values for each test taker:")
-    print(estimated_thetas)
+        plt.savefig("../result/adaptive.png", dpi=300)
