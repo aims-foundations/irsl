@@ -61,20 +61,22 @@ if __name__ == "__main__":
         
         folder_name = paths.split("/")[-2]
         benchmark = folder_name.split("_")[0]
-        if args.repo_id == "LLM360/Amber":
+        if args.repo_id in ["EleutherAI/pythia-6.9b", "EleutherAI/pythia-12b"]:
+            n_step = folder_name.split("step")[-1]
+        elif args.repo_id == "LLM360/Amber":
             if "AmberChat" in folder_name or "AmberSafe" in folder_name:
                 n_step = "Chat" if "AmberChat" in folder_name else "Safe"
             else:
-                n_step = folder_name.split("_")[-1] # 001
+                n_step = folder_name.split("_")[-1]
         elif args.repo_id == "allenai/OLMo-2-0325-32B":
             if "Instruct" in folder_name:
                 n_step = "Instruct"
             else:
                 regex = re.compile(r"step(\d+)-")
-                n_step = regex.search(folder_name).group(1) # 100
+                n_step = regex.search(folder_name).group(1)
         elif args.repo_id == "HuggingFaceTB/SmolLM2-1.7B-intermediate-checkpoints":
             regex = re.compile(r"step-(\d+)")
-            n_step = regex.search(folder_name).group(1) # 125000
+            n_step = regex.search(folder_name).group(1)
         
         run_specs["benchmark"] = benchmark
         run_specs = run_specs.loc[run_specs.index.repeat(d_predictions.shape[0])].reset_index(drop=True)
