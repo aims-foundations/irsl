@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 from tueplots import bundles
 bundles.icml2024()
 import argparse
+from torchmetrics import AUROC
+auroc = AUROC(task="binary")
 
 ABBREVIATE = {
     "wikifact": "wiki",
@@ -129,7 +131,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     model_name = args.repo_id.split("/")[1]
     
-    device = "cuda:4"
+    device = "cuda:7"
     with open(f"data/gather_ckpt_data/results_{model_name}.pkl", "rb") as f:
         results = pickle.load(f)
     keep_cols = ~results.columns.get_level_values("z").isna()
@@ -140,15 +142,29 @@ if __name__ == "__main__":
     zs = torch.tensor(zs, dtype=torch.float, device=device)
     time_steps = [name.split("-")[-1] for name in results.index]
 
+    train_step = int(n_test_takers * 0.05)
+    n_test = n_test_takers - train_step
     gt_thetas = {}
     gt_theta = estimate_theta_all(ys, zs, device)
     gt_thetas["all"] = gt_theta.cpu().numpy()
-    for scenario in tqdm(results.columns.get_level_values("scenario").unique()):
-        mask = (results.columns.get_level_values("scenario") == scenario)
-        ys_scenario = ys[:, mask]
-        zs_scenario = zs[mask]
-        gt_theta = estimate_theta_all(ys_scenario, zs_scenario, device)
-        gt_thetas[ABBREVIATE[scenario]] = gt_theta.cpu().numpy()
+    with open(f"AUC_{model_name}.txt", "w") as f:
+        auc_tests = []
+        for scenario in tqdm(results.columns.get_level_values("scenario").unique()):
+            mask = (results.columns.get_level_values("scenario") == scenario)
+            ys_scenario = ys[:, mask]
+            zs_scenario = zs[mask]
+            gt_theta = estimate_theta_all(ys_scenario, zs_scenario, device)
+            gt_thetas[ABBREVIATE[scenario]] = gt_theta.cpu().numpy()
+            
+            theta_train = gt_theta[train_step]
+            thetas_test = [theta_train] * (n_test_takers - train_step)
+            ys_test = ys_scenario[train_step:, :]
+            mask_test = ~torch.isnan(ys_test)
+            probs_test = torch.sigmoid(thetas_test[:, None] + zs_scenario[None, :])
+            auc_test = auroc(probs_test[mask_test], ys_test[mask_test])
+            auc_tests.append(auc_test)
+            f.write(f"{scenario}, auc_test: {auc_test}\n")
+        f.write(f"average, auc_test: {sum(auc_tests)/len(auc_tests)}")
         
     # adaptive_thetas = []
     # for i in tqdm(range(n_test_takers)):
