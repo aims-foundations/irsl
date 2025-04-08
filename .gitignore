@@ -10,6 +10,7 @@ helm/
 *.npy
 *.pkl
 *.txt
+*.json
 *.csv
 *.pt
 *.parquet

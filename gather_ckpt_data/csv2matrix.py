@@ -140,9 +140,7 @@ if __name__ == "__main__":
     # Reorder the columns based on the new group order
     results = results.sort_index(axis=1, level="scenario", key=lambda x: x.map(group_order))
 
-    # Convert NaN back to -1 for saving the results
-    results = results.replace(np.nan, -1)
-    print((results == -1).sum().sum() / (results.shape[0] * results.shape[1]))
+    print(np.isnan(results).sum() / (results.shape[0] * results.shape[1]))
     # >> 0.6929338169796397
 
     output_dir = "../result/"

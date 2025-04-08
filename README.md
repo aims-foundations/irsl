@@ -32,3 +32,16 @@ pip uninstall crfm-helm
 pip install -e .
 pip install vllm==0.7.3
 ```
+
+For Olmo2
+```
+git clone https://github.com/sangttruong/helm
+conda create -n olmo python=3.10 pip -y
+conda activate olmo
+pip install crfm-helm[all]
+cd helm
+git checkout -b auto_eval origin/auto_eval
+pip uninstall crfm-helm
+pip install -e .
+pip install vllm==0.8.1
+```
