@@ -143,11 +143,18 @@ if __name__ == "__main__":
     time_steps = [name.split("-")[-1] for name in results.index]
 
     train_step = int(n_test_takers * 0.05)
-    n_test = n_test_takers - train_step
     gt_thetas = {}
-    gt_theta = estimate_theta_all(ys, zs, device)
-    gt_thetas["all"] = gt_theta.cpu().numpy()
     with open(f"AUC_{model_name}.txt", "w") as f:
+        gt_theta = estimate_theta_all(ys, zs, device)
+        theta_train = gt_theta[train_step]
+        thetas_test = torch.tensor([theta_train] * (n_test_takers - train_step), device=device)
+        ys_test = ys[train_step:, :]
+        mask_test = ~torch.isnan(ys_test)
+        probs_test = torch.sigmoid(thetas_test[:, None] + zs[None, :])
+        auc_test = auroc(probs_test[mask_test], ys_test[mask_test])
+        f.write(f"all, auc_test: {auc_test}\n")
+        gt_thetas["all"] = gt_theta.cpu().numpy()
+        
         auc_tests = []
         for scenario in tqdm(results.columns.get_level_values("scenario").unique()):
             mask = (results.columns.get_level_values("scenario") == scenario)
@@ -157,7 +164,7 @@ if __name__ == "__main__":
             gt_thetas[ABBREVIATE[scenario]] = gt_theta.cpu().numpy()
             
             theta_train = gt_theta[train_step]
-            thetas_test = [theta_train] * (n_test_takers - train_step)
+            thetas_test = torch.tensor([theta_train] * (n_test_takers - train_step), device=device)
             ys_test = ys_scenario[train_step:, :]
             mask_test = ~torch.isnan(ys_test)
             probs_test = torch.sigmoid(thetas_test[:, None] + zs_scenario[None, :])
