@@ -134,16 +134,18 @@ if __name__ == "__main__":
         results = pickle.load(f)
     keep_cols = ~results.columns.get_level_values("z").isna()
     results = results.loc[:, keep_cols]
-    data = torch.tensor(results.values, dtype=torch.float, device=device)
-    n_test_takers, n_items = data.shape
+    ys = torch.tensor(results.values, dtype=torch.float, device=device)
+    n_test_takers, n_items = ys.shape
     zs = results.columns.get_level_values("z").astype(float).to_numpy()
     zs = torch.tensor(zs, dtype=torch.float, device=device)
     time_steps = [name.split("-")[-1] for name in results.index]
 
     gt_thetas = {}
+    gt_theta = estimate_theta_all(ys, zs, device)
+    gt_thetas["all"] = gt_theta.cpu().numpy()
     for scenario in tqdm(results.columns.get_level_values("scenario").unique()):
         mask = (results.columns.get_level_values("scenario") == scenario)
-        ys_scenario = data[:, mask]
+        ys_scenario = ys[:, mask]
         zs_scenario = zs[mask]
         gt_theta = estimate_theta_all(ys_scenario, zs_scenario, device)
         gt_thetas[ABBREVIATE[scenario]] = gt_theta.cpu().numpy()
@@ -151,7 +153,7 @@ if __name__ == "__main__":
     # adaptive_thetas = []
     # for i in tqdm(range(n_test_takers)):
         # gt theta
-        # ys = data[i, :]
+        # ys = ys[i, :]
         # gt_theta = estimate_theta(ys, zs, device)
         # gt_thetas.append(gt_theta.item())
         
@@ -160,7 +162,7 @@ if __name__ == "__main__":
         # adaptive_thetas.append(adaptive_theta.item())
     
     with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
-        plt.figure(figsize=(10, 6))
+        plt.figure(figsize=(12, 8))
 
         # Ensure time_steps contains a mix of int and str, sort only the numeric parts
         x = list(range(len(time_steps)))  # x-axis positions
@@ -170,7 +172,8 @@ if __name__ == "__main__":
             plt.plot(x, thetas, marker="o", label=abbrev)
 
         plt.xticks(x, x_labels, rotation=45)
-        plt.xlabel("Time Step")
-        plt.ylabel("Estimated Theta")
-        plt.legend(title="Scenario", loc="lower left", bbox_to_anchor=(0, -0.3))
-        plt.savefig(f"result/monitor_{model_name}.png", dpi=300)
+        plt.xlabel("Time Step", fontsize=25)
+        plt.ylabel("Estimated Theta", fontsize=25)
+        # plt.tick_params(axis="both", labelsize=16)
+        plt.legend(title="Scenario", loc="best")
+        plt.savefig(f"result/monitor_{model_name}.png", dpi=300, bbox_inches="tight")
