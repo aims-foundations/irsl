@@ -5,6 +5,7 @@ import numpy as np
 from tqdm import tqdm
 from os.path import exists
 import argparse
+import re
 
 lo = lambda x: json.load(open(x, "r"))
 
@@ -26,15 +27,12 @@ def infer_column_types(df):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo_id", type=str, required=True)
-    # EleutherAI/pythia-6.9b, EleutherAI/pythia-12b, LLM360/Amber
+    # EleutherAI/pythia-6.9b, EleutherAI/pythia-12b
+    # LLM360/Amber, allenai/OLMo-2-0325-32B, HuggingFaceTB/SmolLM2-1.7B-intermediate-checkpoints
     args = parser.parse_args()
     
-    model2benchmarkdir = {
-        "EleutherAI/pythia-6.9b": "/lfs/skampere1/0/yuhengtu/deval/helm/src/benchmark_output/runs",
-        "EleutherAI/pythia-12b": "/lfs/skampere1/0/yuhengtu/deval/helm/src/benchmark_output/runs",
-        "LLM360/Amber": "/lfs/skampere1/0/sttruong/helm/src/benchmark_output/runs"
-    }
-    benchmark_dir = model2benchmarkdir[args.repo_id]
+    benchmark_dir = "/lfs/skampere1/0/yuhengtu/deval/helm/src/benchmark_output/runs" if args.repo_id in ["EleutherAI/pythia-6.9b", "EleutherAI/pythia-12b"] \
+        else "/lfs/skampere1/0/sttruong/helm/src/benchmark_output/runs"
     
     task2metric = lo("task2metric.json")
     task2metric = pd.json_normalize(task2metric)
@@ -60,17 +58,36 @@ if __name__ == "__main__":
         d_requests = pd.json_normalize(d_requests)
         d_predictions = pd.json_normalize(d_predictions)
         run_specs = pd.json_normalize(run_specs)
-        benchmark = paths.split("/")[-2].split("_")[0]
-        n_step = paths.split("/")[-2].split("-")[-1]
+        
+        folder_name = paths.split("/")[-2]
+        benchmark = folder_name.split("_")[0]
+        if args.repo_id == "LLM360/Amber":
+            if "AmberChat" in folder_name or "AmberSafe" in folder_name:
+                n_step = "Chat" if "AmberChat" in folder_name else "Safe"
+            else:
+                n_step = folder_name.split("_")[-1] # 001
+        elif args.repo_id == "allenai/OLMo-2-0325-32B":
+            if "Instruct" in folder_name:
+                n_step = "Instruct"
+            else:
+                regex = re.compile(r"step(\d+)-")
+                n_step = regex.search(folder_name).group(1) # 100
+        elif args.repo_id == "HuggingFaceTB/SmolLM2-1.7B-intermediate-checkpoints":
+            regex = re.compile(r"step-(\d+)")
+            n_step = regex.search(folder_name).group(1) # 125000
+        
         run_specs["benchmark"] = benchmark
         run_specs = run_specs.loc[run_specs.index.repeat(d_predictions.shape[0])].reset_index(drop=True)
         overlap_column = d_predictions.columns.intersection(d_requests.columns)
         d_requests = d_requests.drop(columns=overlap_column)
         result = pd.concat([d_requests, d_predictions, run_specs], axis=1)
+        
         result["request.model"] = result["request.model"] + "-" + n_step
         result["scenario"] = result['name'].str.split(r'[:,]', n=1, expand=True)[0]
         result["scenario"] = result["scenario"].astype("category")
+        result["benchmark"] = result["benchmark"].astype("category")
         assert result["scenario"].nunique() == 1
+        
         metric_name = task2metric[f"{benchmark}.{result['scenario'].iloc[0]}"].iloc[0]
         if isinstance(metric_name, list):
             for metric_name_ in metric_name:
@@ -93,7 +110,8 @@ if __name__ == "__main__":
         else:
             if results[col].dtype == "float64" and np.nanmax(results[col]) < 65500 and np.nanmin(results[col]) > -65500:
                 results[col] = results[col].astype("float16")
+                
     print("Started saving results")
-    output_dir = "../data/"
+    output_dir = "../data/gather_ckpt_data"
     os.makedirs(output_dir, exist_ok=True)
     results.to_pickle(f"{output_dir}/responses_{model_name}.pkl")
