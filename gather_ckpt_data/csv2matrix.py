@@ -108,7 +108,6 @@ if __name__ == "__main__":
     results = results.pivot(index="request.model", columns=["request.prompt", "scenario"], values="dicho_score")
     
     # Reindex the DataFrame according to the step order
-    breakpoint()
     sorted_index = sorted(results.index, key=custom_sort_key)
     results = results.reindex(sorted_index)
     
@@ -139,7 +138,7 @@ if __name__ == "__main__":
     # Reorder the columns based on the new group order
     results = results.sort_index(axis=1, level="scenario", key=lambda x: x.map(group_order))
 
-    # print(f"missing percentage: {np.isnan(results).sum() / (results.shape[0] * results.shape[1])}")
+    print(f"missing percentage: {results.isna().values.sum() / (results.shape[0] * results.shape[1])}")
 
     output_dir = "../result/gather_ckpt_data"
     os.makedirs(output_dir, exist_ok=True)
