@@ -142,36 +142,60 @@ if __name__ == "__main__":
     zs = torch.tensor(zs, dtype=torch.float, device=device)
     time_steps = [name.split("-")[-1] for name in results.index]
 
-    train_step = int(n_test_takers * 0.1)
+    n_train = int(0.8 * n_items)
+    permuted_indices = torch.randperm(n_items)
+    train_indices = permuted_indices[:n_train]
+    test_indices = permuted_indices[n_train:]
+    ys_train = ys[:, train_indices]
+    zs_train = zs[train_indices]
+    ys_test = ys[:, test_indices]
+    zs_test = zs[test_indices]
+    # train_step = int(n_test_takers * 0.1)
+    
+    auc_trains = []
+    auc_tests = []
     gt_thetas = {}
     with open(f"AUC_{model_name}.txt", "w") as f:
         gt_theta = estimate_theta_all(ys, zs, device)
-        theta_train = gt_theta[train_step]
-        thetas_test = torch.tensor([theta_train] * (n_test_takers - train_step), device=device)
-        ys_test = ys[train_step:, :]
-        mask_test = ~torch.isnan(ys_test)
-        probs_test = torch.sigmoid(thetas_test[:, None] + zs[None, :])
-        auc_test = auroc(probs_test[mask_test], ys_test[mask_test])
-        f.write(f"all, auc_test: {auc_test}\n")
         gt_thetas["all"] = gt_theta.cpu().numpy()
         
-        auc_tests = []
-        for scenario in tqdm(results.columns.get_level_values("scenario").unique()):
-            mask = (results.columns.get_level_values("scenario") == scenario)
-            ys_scenario = ys[:, mask]
-            zs_scenario = zs[mask]
-            gt_theta = estimate_theta_all(ys_scenario, zs_scenario, device)
-            gt_thetas[ABBREVIATE[scenario]] = gt_theta.cpu().numpy()
+        gt_theta_train = estimate_theta_all(ys_train, zs_train, device)
+        for i in tqdm(range(n_test_takers)):
+            mask_train = ~torch.isnan(ys_train[i])
+            probs_train = torch.sigmoid(gt_theta_train[i] + zs_train)
+            auc_train = auroc(probs_train[mask_train], ys_train[i][mask_train])
+            auc_trains.append(auc_train.item())
             
-            theta_train = gt_theta[train_step]
-            thetas_test = torch.tensor([theta_train] * (n_test_takers - train_step), device=device)
-            ys_test = ys_scenario[train_step:, :]
-            mask_test = ~torch.isnan(ys_test)
-            probs_test = torch.sigmoid(thetas_test[:, None] + zs_scenario[None, :])
-            auc_test = auroc(probs_test[mask_test], ys_test[mask_test])
-            auc_tests.append(auc_test)
-            f.write(f"{scenario}, auc_test: {auc_test}\n")
-        f.write(f"average, auc_test: {sum(auc_tests)/len(auc_tests)}")
+            mask_test = ~torch.isnan(ys_test[i])
+            probs_test = torch.sigmoid(gt_theta_train[i] + zs_test)
+            auc_test = auroc(probs_test[mask_test], ys_test[i][mask_test])
+            auc_tests.append(auc_test.item())
+        
+        # theta_train = gt_theta[train_step]
+        # thetas_test = torch.tensor([theta_train] * (n_test_takers - train_step), device=device)
+        # ys_test = ys[train_step:, :]
+        # mask_test = ~torch.isnan(ys_test)
+        # probs_test = torch.sigmoid(thetas_test[:, None] + zs[None, :])
+        # auc_test = auroc(probs_test[mask_test], ys_test[mask_test])
+        # f.write(f"all, auc_test: {auc_test}\n")
+        
+        # auc_tests = []
+        # for scenario in tqdm(results.columns.get_level_values("scenario").unique()):
+        #     mask = (results.columns.get_level_values("scenario") == scenario)
+        #     ys_scenario = ys[:, mask]
+        #     zs_scenario = zs[mask]
+        #     gt_theta = estimate_theta_all(ys_scenario, zs_scenario, device)
+        #     gt_thetas[ABBREVIATE[scenario]] = gt_theta.cpu().numpy()
+            
+        #     theta_train = gt_theta[train_step]
+        #     thetas_test = torch.tensor([theta_train] * (n_test_takers - train_step), device=device)
+        #     ys_test = ys_scenario[train_step:, :]
+        #     mask_test = ~torch.isnan(ys_test)
+        #     probs_test = torch.sigmoid(thetas_test[:, None] + zs_scenario[None, :])
+        #     auc_test = auroc(probs_test[mask_test], ys_test[mask_test])
+        #     auc_tests.append(auc_test)
+        #     f.write(f"{scenario}, auc_test: {auc_test}\n")
+        # f.write(f"average, auc_test: {sum(auc_tests)/len(auc_tests)}")
         
     # adaptive_thetas = []
     # for i in tqdm(range(n_test_takers)):
@@ -187,16 +211,29 @@ if __name__ == "__main__":
     with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
         plt.figure(figsize=(12, 8))
 
-        # Ensure time_steps contains a mix of int and str, sort only the numeric parts
-        x = list(range(len(time_steps)))  # x-axis positions
-        x_labels = time_steps  # corresponding labels
+        time_steps = [int(step) for step in time_steps if step not in ["Chat", "Safe"]]
         
-        for abbrev, thetas in gt_thetas.items():
-            plt.plot(x, thetas, marker="o", label=abbrev)
-
-        plt.xticks(x, x_labels, rotation=45)
+        plt.plot(time_steps, auc_trains, marker="o", label="train AUC")
+        plt.plot(time_steps, auc_tests, marker="x", label="test AUC")
         plt.xlabel("Time Step", fontsize=25)
         plt.ylabel("Estimated Theta", fontsize=25)
         # plt.tick_params(axis="both", labelsize=16)
         plt.legend(title="Scenario", loc="best")
         plt.savefig(f"result/monitor_{model_name}.png", dpi=300, bbox_inches="tight")
+        
+    # with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
+    #     plt.figure(figsize=(12, 8))
+
+    #     # Ensure time_steps contains a mix of int and str, sort only the numeric parts
+    #     x = list(range(len(time_steps)))  # x-axis positions
+    #     x_labels = time_steps  # corresponding labels
+        
+    #     for abbrev, thetas in gt_thetas.items():
+    #         plt.plot(x, thetas, marker="o", label=abbrev)
+
+    #     plt.xticks(x, x_labels, rotation=45)
+    #     plt.xlabel("Time Step", fontsize=25)
+    #     plt.ylabel("Estimated Theta", fontsize=25)
+    #     # plt.tick_params(axis="both", labelsize=16)
+    #     plt.legend(title="Scenario", loc="best")
+    #     plt.savefig(f"result/monitor_{model_name}.png", dpi=300, bbox_inches="tight")
