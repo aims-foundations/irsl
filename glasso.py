@@ -5,6 +5,7 @@ from sklearn.utils import resample
 from tqdm import tqdm
 import pickle
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -84,18 +85,27 @@ def binary_neighborhood_selection(X, max_workers=4):
 
 if __name__ == "__main__":
     file_name = 'gsm_hard_easy_200.csv'
-    X = pd.read_csv(file_name).values
-    edge_freq = binary_neighborhood_selection(X)
-    with open('edge_freq.pkl', 'wb') as f:
-        pickle.dump(edge_freq, f)
+    df = pd.read_csv(file_name)
     
+    if os.path.exists("edge_freq.pkl"):
+        with open("edge_freq.pkl", "rb") as f:
+            edge_freq = pickle.load(f)
+    else:
+        X = df.values
+        edge_freq = binary_neighborhood_selection(X)
+        with open('edge_freq.pkl', 'wb') as f:
+            pickle.dump(edge_freq, f)
+        
+    adj_est = (edge_freq >= 0.90).astype(int)
+    adj_est_df = pd.DataFrame(adj_est, columns=df.columns)
+    adj_est_df.to_csv("adj_est.csv", index=False)
+        
     with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
         plt.subplot(1, 2, 1)
         plt.imshow(edge_freq, cmap='Blues')
         plt.title("Edge Frequencies")
 
         plt.subplot(1, 2, 2)
-        adj_est = (edge_freq >= 0.90).astype(int)
         plt.imshow(adj_est, cmap='Greys')
         plt.title("Recovered Graph")
 
