@@ -142,7 +142,7 @@ if __name__ == "__main__":
     zs = torch.tensor(zs, dtype=torch.float, device=device)
     time_steps = [name.split("-")[-1] for name in results.index]
 
-    train_step = int(n_test_takers * 0.05)
+    train_step = int(n_test_takers * 0.1)
     gt_thetas = {}
     with open(f"AUC_{model_name}.txt", "w") as f:
         gt_theta = estimate_theta_all(ys, zs, device)
