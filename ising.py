@@ -10,7 +10,7 @@ bundles.icml2024()
 torch.manual_seed(0)
 gpuid = 7
 
-input_df = pd.read_csv('gsm_hard_easy_997.csv')
+input_df = pd.read_csv('gsm_hard_easy_200.csv')
 data = torch.tensor(input_df.values, dtype=torch.float32)
 N, P = data.shape
 subsets = []
@@ -19,8 +19,8 @@ train_percentage = 0.86
 N_train = int(N*train_percentage)
 lr = 0.1
 l1_lambda = 0.1
-n_epochs = 1000
-n_epochs_refit = 2000
+n_epochs = 10000
+n_epochs_refit = 10000
 
 for i in range(P):
     # Mask to remove i-th column
@@ -52,7 +52,6 @@ class RefitLogisticRegression(torch.nn.Module):
 
 step_size = 1024
 Ws = []
-picked_rhos = []
 for i in tqdm(range(0, P, step_size)):
     B = min(step_size, P - i)
     inputs_ = inputs[:, :, i:i+B].to(f'cuda:{gpuid}') # shape: (N, P-1, B)
@@ -112,7 +111,7 @@ for i in tqdm(range(0, P, step_size)):
 Ws = torch.cat(Ws, dim=1) # shape: (P, P)
 non_zero_mask = (Ws != 0) & (Ws.T != 0)
 Ws_avg = 0.5 * (Ws + Ws.T)
-Ws = torch.where(non_zero_mask, Ws_avg, Ws)
+Ws = torch.where(non_zero_mask, Ws_avg, torch.zeros_like(Ws))
 Ws[torch.arange(Ws.size(0)), torch.arange(Ws.size(1))] = 0
 torch.save(Ws, 'W.pt')
 W_df = pd.DataFrame(Ws.cpu().numpy(), columns=input_df.columns)
