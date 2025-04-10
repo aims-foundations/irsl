@@ -3,13 +3,13 @@ library("qgraph")
 library("jsonlite")
 
 # Obtain the network plot matrix from your model
-ggm_mat <- read.csv("adj_est.csv", header = TRUE)
+ggm_mat <- read.csv("W.csv", header = TRUE)
 
 # Column names
 var_names <- colnames(ggm_mat)
 
 # Step 1: Read the JSON mapping var_names -> z
-z_mapping <- jsonlite::fromJSON("diffeasy_to_z_200.json")
+z_mapping <- jsonlite::fromJSON("diffeasy_to_z_997.json")
 # Ensure that z values are extracted in the order of var_names
 z_vals <- sapply(var_names, function(x) z_mapping[[x]])
 
