@@ -19,7 +19,7 @@ train_percentage = 0.86
 step_size = 1024
 
 # stage 1
-n_bootstraps = 100
+n_bootstraps = 10
 n_CV = 10
 CV_percentage = 0.8
 n_epochs = 10000
@@ -31,7 +31,15 @@ n_epochs_refit = 10000
 
 # data preprocess
 input_df = pd.read_csv('gsm_hard_easy_200.csv')
-data = torch.tensor(input_df.values, dtype=torch.float32)
+
+def fill_by_majority(col):
+    ones_count = (col == 1).sum()
+    zeros_count = (col == 0).sum()
+    majority = 1 if ones_count > zeros_count else 0
+    return col.fillna(majority)
+filled_df = input_df.apply(fill_by_majority)
+
+data = torch.tensor(filled_df.values, dtype=torch.float32)
 N, P = data.shape
 
 subsets = []
@@ -77,15 +85,32 @@ min_rhos = torch.stack(min_rhos, dim=0)
 def soft_thresholding(x, alpha):
     return torch.sign(x) * torch.clamp(torch.abs(x) - alpha, min=0.0)
 
-class RefitLogisticRegression(torch.nn.Module):
-    def __init__(self, P, B):
-        super().__init__()
-        self.linear = torch.nn.Linear(P, B, bias=False)
+def trainer(parameters, optim, closure, epochs):
+    pbar = tqdm(range(epochs), desc="Refit Epoch")
+    loss = closure()
 
-    def forward(self, inputs):
-        W = self.linear.weight  # shape: (P, B)
-        logits = torch.einsum('ijp,jp->ip', inputs, W) # shape: (N_train, B)
-        return torch.sigmoid(logits)
+    for _ in pbar:
+        prev_para = [p.clone().detach() for p in parameters]
+        prev_loss = loss.clone().detach()
+
+        loss = optim.step(closure)
+
+        d_loss = (prev_loss - loss).item()
+        d_parameters = sum(
+            torch.norm(prev - curr, p=2).item()
+            for prev, curr in zip(prev_para, parameters)
+        )
+        grad_norm = torch.norm(W.grad, p=2).item()
+        pbar.set_postfix({
+            "loss": loss.item(),
+            "grad_norm": grad_norm,
+            "d_parameter": d_parameters,
+            "d_loss": d_loss
+        })
+        if d_loss < eps and d_parameters < eps and grad_norm < eps:
+            break
+
+    return parameters
 
 N_train = int(N*train_percentage)
 indices = torch.randperm(N)
@@ -156,10 +181,10 @@ for i in tqdm(range(0, P, step_size), desc="Batch"):
             auc_test_Bs = []
             for j in tqdm(range(B), desc="Calculate AUC"):
                 auc_test_rhos = []
-                for i in range(n_rhos):
+                for k in range(n_rhos):
                     auc_test_rho = auroc(
-                        torch.sigmoid(logits_test[:,i,j].detach().cpu()),
-                        CV_labels_test[:,i,j].detach().cpu(),
+                        torch.sigmoid(logits_test[:,k,j].detach().cpu()),
+                        CV_labels_test[:,k,j].detach().cpu(),
                     )
                     auc_test_rhos.append(auc_test_rho)
                 auc_test_rhos = torch.stack(auc_test_rhos, dim=0) # shape: (n_rhos,)
@@ -184,38 +209,21 @@ for i in tqdm(range(0, P, step_size), desc="Batch"):
     selected_idx = (bootstrap_Ws > freq_threshold) # shape: (P, B)
     selected_idx = selected_idx.unsqueeze(0).expand(N_train, -1, -1) # shape: (N, P, B)
     inputs_train_selected = inputs_train * selected_idx # shape: (N, P, B)
-    refit_model = RefitLogisticRegression(P, B).to(f'cuda:{gpuid}')
-    optimizer = torch.optim.Adam(refit_model.parameters(), lr=0.05)
-    loss_fn = torch.nn.BCELoss()
-    pbar = tqdm(range(n_epochs_refit), desc="Refit Epoch")
-    for epoch in pbar:
-        if epoch > 0:
-            prev_loss = loss.detach().clone()
-            prev_W = W.detach().clone()
-        
+    W = torch.randn((P, B), device=f'cuda:{gpuid}', requires_grad=True)
+    optimizer = torch.optim.LBFGS([W], lr=0.01, max_iter=1000, history_size=10, line_search_fn='strong_wolfe')
+    
+    def closure():
         optimizer.zero_grad()
-        probs = refit_model(inputs_train_selected)
-        loss = loss_fn(probs, labels_train_selected)
+        logits = torch.einsum('ijp,jp->ip', inputs_train_selected, W) # shape: (N_train, B)
+        probs = torch.sigmoid(logits)
+        loss = -Bernoulli(probs=probs).log_prob(labels_train_selected).mean()
         loss.backward()
-        optimizer.step()
-        W = refit_model.linear.weight
-        
-        if epoch > 0:
-            d_loss = (prev_loss - loss).item()
-            d_W = torch.norm(prev_W - W, p=2).item()
-            grad_norm = torch.norm(W.grad, p=2).item()
-            pbar.set_postfix({
-                "loss": loss.item(),
-                "d_loss": d_loss,
-                "d_W": d_W,
-                "grad_norm": grad_norm,
-            })
-            if d_loss < eps and d_W < eps and grad_norm < eps:
-                break
-            
+        return loss
+    
+    W = trainer([W], optimizer, closure, n_epochs_refit)[0] # shape: (P, B)
     Ws.append(W.detach())
     torch.save(W, f'W_{i}.pt')
-        
+
     logits_train = torch.einsum('ijp,jp->ip', inputs_train, W) # shape: (N, B)
     final_auc_train = auroc(torch.sigmoid(logits_train), labels_train_selected)
     logits_test = torch.einsum('ijp,jp->ip', inputs_test, W)
@@ -238,8 +246,8 @@ print(f"Non-zero elements: {non_zero_count} / {total_elements} ({percent_non_zer
 
 # Visualize the matrix
 plt.figure(figsize=(8, 6))
-plt.imshow(Ws.cpu().numpy(), cmap='viridis')
-plt.title("Matrix Visualization")
-plt.colorbar(label="Value")
+plt.imshow(Ws.cpu().numpy(), cmap='bwr', vmin=-abs(Ws).max().item(), vmax=abs(Ws).max().item())
+plt.title("Weight Matrix")
+plt.colorbar(label="Weight")
 plt.savefig("matrix_visualization.png", dpi=300, bbox_inches="tight")
 plt.close()
