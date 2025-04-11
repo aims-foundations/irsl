@@ -13,6 +13,7 @@ helm/
 *.json
 *.csv
 *.pt
+*.log
 *.parquet
 *.pkl.batch_count
 
