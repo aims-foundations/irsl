@@ -11,7 +11,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 torch.manual_seed(0)
-gpuid = 0
+gpuid = 1
 n_rhos = 10
 eps = 1e-5
 
@@ -30,7 +30,7 @@ freq_threshold = 0.9
 n_epochs_refit = 10000
 
 # data preprocess
-input_df = pd.read_csv('gsm_hard_easy_200.csv')
+input_df = pd.read_csv('gather_helm_data/resmat_lite_all.csv')
 
 def fill_by_majority(col):
     ones_count = (col == 1).sum()
@@ -121,7 +121,7 @@ Ws = []
 for i in tqdm(range(0, P, step_size), desc="Batch"):
     B = min(step_size, P - i)
     inputs_ = inputs[:, :, i:i+B].to(f'cuda:{gpuid}') # shape: (N, P-1, B)
-    labels_ = labels[:, i:i+B].to(f'cuda:{gpuid}') # shape: (N, n_rhos, B)
+    labels_ = labels[:, :, i:i+B].to(f'cuda:{gpuid}') # shape: (N, n_rhos, B)
     rho_seqs_ = rho_seqs[:, i:i+B].to(f'cuda:{gpuid}') # shape: (n_rhos, B)
 
     inputs_train = inputs_[train_indices, :, :]
