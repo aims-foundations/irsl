@@ -24,7 +24,7 @@ def infer_column_types(df):
 
 if __name__ == "__main__":
     input_dir = "/lfs/skampere1/0/sttruong/reeval/gather_helm_data/helm_jsons"
-    BENCHMARKS = ["lite"]
+    BENCHMARKS = ["classic", "lite", "mmlu"]
     task2metric = lo("task2metric.json")
     task2metric = pd.json_normalize(task2metric)
 

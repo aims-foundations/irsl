@@ -1,12 +1,12 @@
 import numpy as np
 import pandas as pd
 import pickle
-import matplotlib.pyplot as plt
-from tueplots import bundles
-import matplotlib.colors as mcolors
 from datasets import load_dataset
 import os
 import argparse
+import sys
+sys.path.append("..")
+from utils import visualize_response_matrix
 
 def custom_sort_key(x):
     suffix = x.split("-")[-1]
@@ -16,68 +16,6 @@ def custom_sort_key(x):
         return float('inf')      # Last
     else:
         return int(suffix)  # Regular numeric sorting
-
-def visualize_response_matrix(results, value, filename):
-    # Extract the groups labels in the order of the columns
-    group_values = results.columns.get_level_values("scenario")
-
-    # Identify the boundaries where the group changes
-    boundaries = []
-    for i in range(1, len(group_values)):
-        if group_values[i] != group_values[i - 1]:
-            boundaries.append(i - 0.5)  # using 0.5 to place the line between columns
-
-    # Visualize the results with a matrix: red is 0, white is -1 and blue is 1
-    cmap = mcolors.ListedColormap(["white", "red", "blue"])
-    bounds = [-1.5, -0.5, 0.5, 1.5]
-    norm = mcolors.BoundaryNorm(bounds, cmap.N)
-
-    # Calculate midpoints for each group label
-    groups_list = list(group_values)
-    group_names = []
-    group_midpoints = []
-    current_group = groups_list[0]
-    start_index = 0
-    for i, grp in enumerate(groups_list):
-        if grp != current_group:
-            midpoint = (start_index + i - 1) / 2.0
-            group_names.append(current_group)
-            group_midpoints.append(midpoint)
-            current_group = grp
-            start_index = i
-    # Add the last group
-    midpoint = (start_index + len(groups_list) - 1) / 2.0
-    group_names.append(current_group)
-    group_midpoints.append(midpoint)
-
-    # Define the minimum spacing between labels (e.g., 100 units)
-    min_spacing = 100
-    last_label_pos = -float("inf")
-    # Plot the matrix
-    with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
-        fig, ax = plt.subplots(figsize=(20, 10))
-        cax = ax.matshow(value, aspect="auto", cmap=cmap, norm=norm)
-
-        # Add vertical lines at each boundary
-        for b in boundaries:
-            ax.axvline(x=b, color="black", linewidth=0.25, linestyle="--", alpha=0.5)
-        
-        # Add group labels above the matrix, only if they're spaced enough apart
-        for name, pos in zip(group_names, group_midpoints):
-            if pos - last_label_pos >= min_spacing:
-                ax.text(pos, -5, name, ha='center', va='bottom', rotation=90, fontsize=3)
-                last_label_pos = pos
-
-        # Add model labels on the y-axis
-        ax.set_yticks(range(len(results.index)))
-        ax.set_yticklabels(results.index, fontsize=3)
-
-        # Add a colorbar
-        cbar = plt.colorbar(cax)
-        cbar.set_ticks([-1, 0, 1])
-        cbar.set_ticklabels(["-1", "0", "1"])
-        plt.savefig(f"../result/{filename}.png", dpi=600, bbox_inches="tight")
-        plt.close()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -115,10 +53,8 @@ if __name__ == "__main__":
     results = results.sort_index(axis=1, level="scenario")
 
     # # Remove columns that are all 0 or all 1 and fill missing values with -1 temporarily
-    # TODO: remove 0&nan, and 1&nan
-    # results = results.loc[:, (results != 0).any()]
-    # results = results.loc[:, (results != 1).any()]
-    
+    # results = results.loc[:, ~((results.isin([0, np.nan]).all()) | (results.isin([1, np.nan]).all()))]
+
     # nan -> -1 -> np.nan
     results = results.fillna(-1).astype(int)
     # Replace -1 with NaN so that missing scores are ignored during visualization
