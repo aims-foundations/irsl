@@ -13,7 +13,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 torch.manual_seed(0)
-gpuid = 5
+gpuid = 4
 n_rhos = 10
 eps = 1e-5
 
@@ -24,7 +24,7 @@ step_size = 8192
 n_bootstraps = 10
 n_CV = 10
 CV_percentage = 0.8
-n_epochs = 10000
+n_epochs = 1000
 lr = 0.1
 freq_threshold = 0.9
 
@@ -33,7 +33,7 @@ n_epochs_refit = 10000
 
 # data preprocess
 file_name = 'gsm_hard_easy_200.csv'
-output_dir = f"../result/ising/{file_name.split('.')[0]}_ista_torch"
+output_dir = f"../result/ising/{file_name.split('.')[0]}_fista_torch"
 os.makedirs(output_dir, exist_ok=True)
 input_df = pd.read_csv(file_name)
 def fill_by_majority(col):
@@ -155,6 +155,9 @@ with open(f"{output_dir}_print.txt", "w") as f:
                 
                 W = torch.randn((P, n_rhos, B), device=f'cuda:{gpuid}', requires_grad=False)
                 pbar = tqdm(range(n_epochs), desc="Sparse Training")
+                W_fista = W.clone().detach()
+                t = torch.tensor(1.0, dtype=torch.float32, device=f'cuda:{gpuid}')
+
                 for epoch in pbar:
                     if epoch > 0:
                         prev_loss = loss.detach().clone()
@@ -164,7 +167,12 @@ with open(f"{output_dir}_print.txt", "w") as f:
                     probs = torch.sigmoid(logits)
                     error = probs - CV_labels_train  # shape: (N_train, n_rhos, B)
                     grad = torch.einsum('ijp,ikp->jkp', CV_inputs_train, error) / N_CV_train # shape: (P, n_rhos, B)
-                    W = soft_thresholding(W - lr * grad, lr * rho_seqs_)
+                    W_fista_new = soft_thresholding(W - lr * grad, lr * rho_seqs_)
+                    t_new = (1.0 + torch.sqrt(1.0 + 4.0 * t**2)) / 2.0
+                    momentum = (1 - t) / t_new
+                    W = (1-momentum)*W_fista_new + momentum*W_fista
+                    W_fista = W_fista_new
+                    t = t_new
 
                     loss = -Bernoulli(probs=probs).log_prob(CV_labels_train).mean()
                     reg_term = (rho_seqs_ * torch.norm(W, p=1, dim=0)).mean()
