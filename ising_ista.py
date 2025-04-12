@@ -33,7 +33,7 @@ n_epochs_refit = 10000
 
 # data preprocess
 file_name = 'gsm_hard_easy_200.csv'
-output_dir = f"../result/ising/{file_name.split('.')[0]}_ista_torch"
+output_dir = f"result/ising/{file_name.split('.')[0]}_ista_torch"
 os.makedirs(output_dir, exist_ok=True)
 input_df = pd.read_csv(file_name)
 def fill_by_majority(col):
@@ -117,7 +117,7 @@ def trainer(parameters, optim, closure, epochs):
 
     return parameters
 
-with open(f"{output_dir}_print.txt", "w") as f:
+with open(f"{output_dir}/print.txt", "w") as f:
     N_train = int(N*train_percentage)
     indices = torch.randperm(N)
     train_indices = indices[:N_train]

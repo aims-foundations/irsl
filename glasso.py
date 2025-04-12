@@ -85,21 +85,24 @@ def binary_neighborhood_selection(X, max_workers=4):
 
 if __name__ == "__main__":
     file_name = 'gsm_hard_easy_200.csv'
+    output_dir = f"result/ising/{file_name.split('.')[0]}_sklearn"
+    os.makedirs(output_dir, exist_ok=True)
     df = pd.read_csv(file_name)
     
-    if os.path.exists("edge_freq.pkl"):
-        with open("edge_freq.pkl", "rb") as f:
+    edge_freq_path = f"{output_dir}/edge_freq.pkl"
+    if os.path.exists(edge_freq_path):
+        with open(edge_freq_path, "rb") as f:
             edge_freq = pickle.load(f)
     else:
         X = df.values
         edge_freq = binary_neighborhood_selection(X)
-        with open('edge_freq.pkl', 'wb') as f:
+        with open(edge_freq_path, 'wb') as f:
             pickle.dump(edge_freq, f)
         
     adj_est = (edge_freq >= 0.90).astype(int)
     adj_est_df = pd.DataFrame(adj_est, columns=df.columns)
-    adj_est_df.to_csv("adj_est.csv", index=False)
-        
+    adj_est_df.to_csv(f"{output_dir}/adj_est.csv", index=False)
+
     with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
         plt.subplot(1, 2, 1)
         plt.imshow(edge_freq, cmap='Blues')
@@ -110,4 +113,4 @@ if __name__ == "__main__":
         plt.title("Recovered Graph")
 
         plt.tight_layout()
-        plt.savefig(f"result/glasso_{file_name}.png", dpi=300, bbox_inches="tight")
+        plt.savefig(f"{output_dir}/glasso.png", dpi=300, bbox_inches="tight")
