@@ -13,7 +13,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 torch.manual_seed(0)
-gpuid = 5
+gpuid = 7
 n_rhos = 10
 
 train_percentage = 0.8
@@ -28,13 +28,15 @@ lr = 0.1
 freq_threshold = 0.9
 
 # stage 2
-n_epochs_refit = 100
+n_epochs_refit = 1000
 
 # stage 3
 GS_percentage = 0.5
+n_burn_in = 1000
+n_sampling = 50000
 
 # data preprocess
-file_name = 'gsm_hard_easy_17.csv'
+file_name = 'resmat_lite_all.csv'
 output_dir = f"result/ising/{file_name.split('.')[0]}_fista_torch"
 os.makedirs(output_dir, exist_ok=True)
 input_df = pd.read_csv(file_name)
@@ -179,8 +181,8 @@ with open(f"{output_dir}/print.txt", "a") as f:
                     reg_term = (rho_seqs_ * torch.norm(W, p=1, dim=0)).mean()
                     if epoch > 0:
                         d_loss = (prev_loss - loss).item()
-                        d_W = torch.norm(prev_W - W, p=2).item() / W.numel()
-                        grad_norm = torch.norm(grad, p=2).item() / grad.numel()
+                        d_W = torch.norm(prev_W - W, p=2).item() # / W.numel()
+                        grad_norm = torch.norm(grad, p=2).item() # / grad.numel()
                         pbar.set_postfix({
                             "loss": loss.item(),
                             "reg_term": reg_term.item(),
@@ -265,7 +267,7 @@ with open(f"{output_dir}/print.txt", "a") as f:
         data_test_observe = data[test_indices, :][:, observe_indices].to(f'cuda:{gpuid}')
         data_test_inpute = data[test_indices, :][:, impute_indices].to(f'cuda:{gpuid}')
         
-        def gibbs_sampling(data_test_observe, W, burn_in=1000, n_samples=100000):
+        def gibbs_sampling(data_test_observe, W, burn_in, n_samples):
             N_test, P_observe = data_test_observe.shape
             P = W.shape[0]
             P_impute = P - P_observe
@@ -274,7 +276,7 @@ with open(f"{output_dir}/print.txt", "a") as f:
             data_test = torch.cat((data_test_observe, data_test_impute), dim=1)
 
             data_test_sum = torch.zeros_like(data_test)
-            for t in tqdm(range(burn_in + n_samples, desc="Gibbs Sampling")):
+            for t in tqdm(range(burn_in + n_samples), desc="Gibbs Sampling"):
                 rand_index = torch.randint(P_observe, P, (1,)).item()
                 data_test_new = data_test.clone()
                 data_test_new[:, rand_index] = 1 - data_test[:, rand_index]
@@ -292,7 +294,7 @@ with open(f"{output_dir}/print.txt", "a") as f:
 
             return data_test_sum[:, P_observe:] / n_samples
         
-        data_test_inpute_probs = gibbs_sampling(data_test_observe, W)
+        data_test_inpute_probs = gibbs_sampling(data_test_observe, W, n_burn_in, n_sampling)
         auc_GS = auroc(data_test_inpute_probs, data_test_inpute)
         print(f"auc_GS: {auc_GS}")
         f.write(f"auc_GS: {auc_GS}")
