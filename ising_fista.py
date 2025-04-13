@@ -262,19 +262,19 @@ with open(f"{output_dir}/print.txt", "a") as f:
         N_GS_observe = int(P*GS_percentage)
         observe_indices = GS_indices[:N_GS_observe]
         impute_indices = GS_indices[N_GS_observe:]
-        data_test_observe = data[test_indices, :][:, observe_indices]
-        data_test_inpute = data[test_indices, :][:, impute_indices]
+        data_test_observe = data[test_indices, :][:, observe_indices].to(f'cuda:{gpuid}')
+        data_test_inpute = data[test_indices, :][:, impute_indices].to(f'cuda:{gpuid}')
         
-        def gibbs_sampling(data_test_observe, W, burn_in=1000, n_samples=100000, device='cpu'):
+        def gibbs_sampling(data_test_observe, W, burn_in=1000, n_samples=100000):
             N_test, P_observe = data_test_observe.shape
             P = W.shape[0]
             P_impute = P - P_observe
 
-            data_test_impute = torch.randint(0, 2, (N_test, P_impute), device=device, dtype=torch.float32)
+            data_test_impute = torch.randint(0, 2, (N_test, P_impute), device=f'cuda:{gpuid}', dtype=torch.float32)
             data_test = torch.cat((data_test_observe, data_test_impute), dim=1)
 
             data_test_sum = torch.zeros_like(data_test)
-            for t in range(burn_in + n_samples):
+            for t in tqdm(range(burn_in + n_samples, desc="Gibbs Sampling")):
                 rand_index = torch.randint(P_observe, P, (1,)).item()
                 data_test_new = data_test.clone()
                 data_test_new[:, rand_index] = 1 - data_test[:, rand_index]
@@ -283,7 +283,7 @@ with open(f"{output_dir}/print.txt", "a") as f:
                 unnorm_prob_new = 0.5 * torch.einsum("bi,ij,bj->b", data_test_new, W, data_test_new)
 
                 accept_prob = torch.minimum(torch.ones_like(unnorm_prob_old), torch.exp(unnorm_prob_new - unnorm_prob_old))
-                rand_vals = torch.rand(N_test, device=device)
+                rand_vals = torch.rand(N_test, device=f'cuda:{gpuid}')
                 accept_mask = rand_vals < accept_prob
                 data_test[accept_mask, rand_index] = data_test_new[accept_mask, rand_index]
 
