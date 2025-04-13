@@ -13,26 +13,28 @@ import warnings
 warnings.filterwarnings("ignore")
 
 torch.manual_seed(0)
-gpuid = 4
+gpuid = 5
 n_rhos = 10
-eps = 1e-5
 
-train_percentage = 0.86
+train_percentage = 0.8
 step_size = 8192
 
 # stage 1
-n_bootstraps = 10
-n_CV = 10
+n_bootstraps = 1
+n_CV = 1
 CV_percentage = 0.8
 n_epochs = 1000
 lr = 0.1
 freq_threshold = 0.9
 
 # stage 2
-n_epochs_refit = 10000
+n_epochs_refit = 100
+
+# stage 3
+GS_percentage = 0.5
 
 # data preprocess
-file_name = 'resmat_lite_all.csv'
+file_name = 'gsm_hard_easy_17.csv'
 output_dir = f"result/ising/{file_name.split('.')[0]}_fista_torch"
 os.makedirs(output_dir, exist_ok=True)
 input_df = pd.read_csv(file_name)
@@ -57,10 +59,8 @@ for i in range(P):
     # add a one column to the subset
     subset = torch.cat((subset, torch.ones(N, 1)), dim=1) # shape: (N, P)
     leftover = data[:, i].unsqueeze(1) # shape: (N, 1)
-
     subsets.append(subset.unsqueeze(2)) # shape: (N, P-1, 1)
     leftovers.append(leftover.unsqueeze(2)) # shape: (N, 1, 1)
-
 inputs = torch.cat(subsets, dim=2) # shape: (N, P-1, P)
 labels = torch.cat(leftovers, dim=2) # shape: (N, P)
 labels = labels.expand(-1, n_rhos, -1) # shape: (N, n_rhos, P)
@@ -90,7 +90,7 @@ min_rhos = torch.stack(min_rhos, dim=0)
 def soft_thresholding(x, alpha):
     return torch.sign(x) * torch.clamp(torch.abs(x) - alpha, min=0.0)
 
-def trainer(parameters, optim, closure, epochs):
+def trainer(parameters, optim, closure, epochs, eps = 1e-5):
     pbar = tqdm(range(epochs), desc="Refit Epoch")
     loss = closure()
 
@@ -105,7 +105,7 @@ def trainer(parameters, optim, closure, epochs):
             torch.norm(prev - curr, p=2).item()
             for prev, curr in zip(prev_para, parameters)
         )
-        grad_norm = torch.norm(W.grad, p=2).item()
+        grad_norm = sum(torch.norm(p.grad, p=2).item() for p in parameters if p.grad is not None)
         pbar.set_postfix({
             "loss": loss.item(),
             "grad_norm": grad_norm,
@@ -117,7 +117,7 @@ def trainer(parameters, optim, closure, epochs):
 
     return parameters
 
-with open(f"{output_dir}/print.txt", "w") as f:
+with open(f"{output_dir}/print.txt", "a") as f:
     N_train = int(N*train_percentage)
     indices = torch.randperm(N)
     train_indices = indices[:N_train]
@@ -136,8 +136,9 @@ with open(f"{output_dir}/print.txt", "w") as f:
         labels_train_selected = labels_train[:, 0, :]
         labels_test_selected = labels_[test_indices, :, :][:, 0, :]
 
-        # stage 1
+        # stage 1: variable selection
         bootstrap_Ws = []
+        final_auc_valids = []
         for _ in tqdm(range(n_bootstraps), desc="Bootstraps"):
             bootstrap_indices = torch.randint(0, N_train, (N_train,), device=f'cuda:{gpuid}')
             boot_inputs_train = inputs_train[bootstrap_indices, :, :]
@@ -178,8 +179,8 @@ with open(f"{output_dir}/print.txt", "w") as f:
                     reg_term = (rho_seqs_ * torch.norm(W, p=1, dim=0)).mean()
                     if epoch > 0:
                         d_loss = (prev_loss - loss).item()
-                        d_W = torch.norm(prev_W - W, p=2).item()
-                        grad_norm = torch.norm(grad, p=2).item()
+                        d_W = torch.norm(prev_W - W, p=2).item() / W.numel()
+                        grad_norm = torch.norm(grad, p=2).item() / grad.numel()
                         pbar.set_postfix({
                             "loss": loss.item(),
                             "reg_term": reg_term.item(),
@@ -187,6 +188,7 @@ with open(f"{output_dir}/print.txt", "w") as f:
                             "d_W": d_W,
                             "grad_norm": grad_norm,
                         })
+                        eps = 1e-5
                         if d_loss < eps and d_W < eps and grad_norm < eps:
                             break
                 
@@ -210,18 +212,28 @@ with open(f"{output_dir}/print.txt", "w") as f:
             auc_test_CVs = auc_test_CVs.mean(dim=2) # shape: (n_rhos, B)
             # pick the largest (first) rho that has highest test AUC
             best_rho_indices = auc_test_CVs.argmax(dim=0) # shape: (B,)
+            final_auc_valid = auc_test_CVs[best_rho_indices, torch.arange(B)].mean()
+            final_auc_valids.append(final_auc_valid.item())
             W = W[:, best_rho_indices, torch.arange(B)]  # shape: (P, B)
             W_binary = (W != 0).float()
             bootstrap_Ws.append(W_binary)
-            
+        
+        print(f"final_auc_valid: {sum(final_auc_valids)/len(final_auc_valids)}")
+        f.write(f"final_auc_valid: {sum(final_auc_valids)/len(final_auc_valids)}\n")
         bootstrap_Ws = torch.stack(bootstrap_Ws, dim=2) # shape: (P, B, n_bootstraps)
         bootstrap_Ws = torch.mean(bootstrap_Ws, dim=2) # shape: (P, B)
-        torch.save(bootstrap_Ws, f'{output_dir}/bootstrap_W_{i}.pt')
-
-        # stage 2
+        bootstrap_Ws = torch.maximum(bootstrap_Ws, bootstrap_Ws.T)
+        torch.save(bootstrap_Ws, f'{output_dir}/freq_matrix_{i}.pt')
         selected_idx = (bootstrap_Ws > freq_threshold) # shape: (P, B)
-        selected_idx = selected_idx.unsqueeze(0).expand(N_train, -1, -1) # shape: (N, P, B)
-        inputs_train_selected = inputs_train * selected_idx # shape: (N, P, B)
+        non_zero_count = (selected_idx != 0).sum().item()
+        total_elements = selected_idx.numel()
+        percent_non_zero = 100.0 * non_zero_count / total_elements
+        print(f"stage 1 non-zero elements: {non_zero_count} / {total_elements} ({percent_non_zero:.2f}%)")
+        f.write(f"stage 1 non-zero elements: {non_zero_count} / {total_elements} ({percent_non_zero:.2f}%)\n")
+        
+        # stage 2: refitting logistic regression
+        selected_idx_N_train = selected_idx.unsqueeze(0).expand(N_train, -1, -1) # shape: (N, P, B)
+        inputs_train_selected = inputs_train * selected_idx_N_train # shape: (N, P, B)
         W = torch.randn((P, B), device=f'cuda:{gpuid}', requires_grad=True)
         optimizer = torch.optim.LBFGS([W], lr=0.01, max_iter=1000, history_size=10, line_search_fn='strong_wolfe')
         
@@ -234,6 +246,7 @@ with open(f"{output_dir}/print.txt", "w") as f:
             return loss
         
         W = trainer([W], optimizer, closure, n_epochs_refit)[0] # shape: (P, B)
+        W =  W * selected_idx
         Ws.append(W.detach())
         torch.save(W, f'{output_dir}/W_{i}.pt')
 
@@ -243,6 +256,46 @@ with open(f"{output_dir}/print.txt", "w") as f:
         final_auc_test = auroc(torch.sigmoid(logits_test), labels_test_selected)
         print(f"final_auc_train: {final_auc_train}; final_auc_test: {final_auc_test}")
         f.write(f"final_auc_train: {final_auc_train}; final_auc_test: {final_auc_test}\n")
+        
+        # stage 3: Gibbs Sampling for inference
+        GS_indices = torch.randperm(P)
+        N_GS_observe = int(P*GS_percentage)
+        observe_indices = GS_indices[:N_GS_observe]
+        impute_indices = GS_indices[N_GS_observe:]
+        data_test_observe = data[test_indices, :][:, observe_indices]
+        data_test_inpute = data[test_indices, :][:, impute_indices]
+        
+        def gibbs_sampling(data_test_observe, W, burn_in=1000, n_samples=100000, device='cpu'):
+            N_test, P_observe = data_test_observe.shape
+            P = W.shape[0]
+            P_impute = P - P_observe
+
+            data_test_impute = torch.randint(0, 2, (N_test, P_impute), device=device, dtype=torch.float32)
+            data_test = torch.cat((data_test_observe, data_test_impute), dim=1)
+
+            data_test_sum = torch.zeros_like(data_test)
+            for t in range(burn_in + n_samples):
+                rand_index = torch.randint(P_observe, P, (1,)).item()
+                data_test_new = data_test.clone()
+                data_test_new[:, rand_index] = 1 - data_test[:, rand_index]
+
+                unnorm_prob_old = 0.5 * torch.einsum("bi,ij,bj->b", data_test, W, data_test)
+                unnorm_prob_new = 0.5 * torch.einsum("bi,ij,bj->b", data_test_new, W, data_test_new)
+
+                accept_prob = torch.minimum(torch.ones_like(unnorm_prob_old), torch.exp(unnorm_prob_new - unnorm_prob_old))
+                rand_vals = torch.rand(N_test, device=device)
+                accept_mask = rand_vals < accept_prob
+                data_test[accept_mask, rand_index] = data_test_new[accept_mask, rand_index]
+
+                if t >= burn_in:
+                    data_test_sum += data_test
+
+            return data_test_sum[:, P_observe:] / n_samples
+        
+        data_test_inpute_probs = gibbs_sampling(data_test_observe, W)
+        auc_GS = auroc(data_test_inpute_probs, data_test_inpute)
+        print(f"auc_GS: {auc_GS}")
+        f.write(f"auc_GS: {auc_GS}")
 
     Ws = torch.cat(Ws, dim=1) # shape: (P, P)
     non_zero_mask = (Ws != 0) & (Ws.T != 0)
@@ -256,9 +309,10 @@ with open(f"{output_dir}/print.txt", "w") as f:
     non_zero_count = (Ws != 0).sum().item()
     total_elements = Ws.numel()
     percent_non_zero = 100.0 * non_zero_count / total_elements
-    print(f"Non-zero elements: {non_zero_count} / {total_elements} ({percent_non_zero:.2f}%)")
-    f.write(f"Non-zero elements: {non_zero_count} / {total_elements} ({percent_non_zero:.2f}%)\n")
+    print(f"stage 2 non-zero elements: {non_zero_count} / {total_elements} ({percent_non_zero:.2f}%)")
+    f.write(f"stage 2 non-zero elements: {non_zero_count} / {total_elements} ({percent_non_zero:.2f}%)\n")
 
+    # TODO: plot 3 figure together
     cmap = mcolors.ListedColormap(['blue', 'white', 'red'])
     bounds = [-abs(Ws).max().item(), 0, abs(Ws).max().item()]  # Set the bounds for the color scale
     norm = mcolors.BoundaryNorm(bounds, cmap.N)

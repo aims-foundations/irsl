@@ -117,7 +117,7 @@ def trainer(parameters, optim, closure, epochs):
 
     return parameters
 
-with open(f"{output_dir}/print.txt", "w") as f:
+with open(f"{output_dir}/print.txt", "a") as f:
     N_train = int(N*train_percentage)
     indices = torch.randperm(N)
     train_indices = indices[:N_train]
