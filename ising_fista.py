@@ -122,7 +122,8 @@ def stage1_variable_selection(args, inputs_train, labels_train, rho_seqs_):
                 logits = torch.einsum('ijp,jkp->ikp', cv_inputs_train, W) # shape: (N_train, n_rhos, B)
                 probs = torch.sigmoid(logits)
                 # TODO: grad calculation might have a bug
-                grad = 2*torch.einsum('ijp,ikp->jkp', cv_inputs_train, (probs - cv_labels_train)) # shape: (P, n_rhos, B)
+                error = (probs - cv_labels_train) / (N_train*args.cv_percentage)
+                grad = torch.einsum('ijp,ikp->jkp', cv_inputs_train, error) # shape: (P, n_rhos, B)
                 W_fista_new = soft_thresholding(W - args.lr_sparse * grad, args.lr_sparse * rho_seqs_)
                 t_new = (1.0 + torch.sqrt(1.0 + 4.0 * t**2)) / 2.0
                 momentum = (1 - t) / t_new
@@ -305,6 +306,7 @@ if __name__ == "__main__":
     # read response matrix and fill missing data with column majority, turn into tensor
     input_df = pd.read_csv(args.resmat_path)
     input_df = input_df.apply(lambda col: col.fillna(1 if (col == 1).sum() > (col == 0).sum() else 0))
+    input_df = input_df[np.random.permutation(input_df.columns)]
     data = torch.tensor(input_df.values, dtype=torch.float32)
     N, P = data.shape
     logging.info(f"{data.shape}")
@@ -348,9 +350,9 @@ if __name__ == "__main__":
         logging.info(f"stage 2 non-zero elements: {non_zero_count} / {total_count} ({100*non_zero_count/total_count:.2f}%)")
         
         # Stage 3 - Gibbs Sampling (Ising Inference)
-        observe_indices, impute_indices = split_train_test(P, args.gs_percentage)
-        data_test_observe = data[test_indices, :][:, observe_indices].to(f'cuda:{args.gpuid}')
-        data_test_inpute_true = data[test_indices, :][:, impute_indices].to(f'cuda:{args.gpuid}')
+        P_observe = int(P*args.gs_percentage)
+        data_test_observe = data[test_indices, :][:, :P_observe].to(f'cuda:{args.gpuid}')
+        data_test_inpute_true = data[test_indices, :][:, :P_observe].to(f'cuda:{args.gpuid}')
         data_test_inpute_probs = stage3_gibbs_sampling(args, data_test_observe, W)
         gs_auc = auroc(data_test_inpute_probs, data_test_inpute_true)
         logging.info(f"stage 3 gibbs sampling auc: {gs_auc}")
@@ -370,8 +372,9 @@ if __name__ == "__main__":
         cmap_w_freq = LinearSegmentedColormap.from_list("W_freq_cmap", ["white", "blue"])
         norm_w_freq = Normalize(vmin=0, vmax=1)
         cmap_w_binary = ListedColormap(['white', 'blue'])
+        lower_perc, upper_perc = np.percentile(Ws.numpy(), [2, 98])
+        norm_w = TwoSlopeNorm(vmin=lower_perc, vcenter=0, vmax=upper_perc)
         cmap_w = LinearSegmentedColormap.from_list("W_cmap", ["red", "white", "blue"])
-        norm_w = TwoSlopeNorm(vmin=Ws.min(), vcenter=0, vmax=Ws.max())
         fig, axes = plt.subplots(1, 3, figsize=(18, 6), constrained_layout=True)
         im0 = axes[0].imshow(W_freqs.numpy(), cmap=cmap_w_freq, norm=norm_w_freq)
         axes[0].set_title("W_freq")
@@ -382,7 +385,7 @@ if __name__ == "__main__":
         axes[1].set_title("W_binary")
         im2 = axes[2].imshow(Ws.numpy(), cmap=cmap_w, norm=norm_w)
         axes[2].set_title("W")
-        ticks_w = np.linspace(Ws.min(), Ws.max(), 7)
+        ticks_w = np.linspace(lower_perc, upper_perc, 7)
         cbar2 = plt.colorbar(im2, ax=axes[2], fraction=0.046, pad=0.04, ticks=ticks_w)
         cbar2.ax.set_yticklabels([f"{t:.2f}" for t in ticks_w])
         plt.savefig(f"{output_dir}/W.png", dpi=300)
