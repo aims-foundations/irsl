@@ -15,6 +15,7 @@ import warnings
 warnings.filterwarnings("ignore")
 import logging
 import numpy as np
+np.random.seed(0)
 from datetime import datetime
 
 def split_train_test(total_count, train_percentage):
@@ -272,7 +273,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # General
     parser.add_argument("--resmat_path", type=str, required=True, help="Path to response matrix")
-    parser.add_argument("--gpuid", type=int, default=4, help="GPU ID")
+    parser.add_argument("--gpuid", type=int, default=7, help="GPU ID")
     parser.add_argument("--train_percentage", type=float, default=0.8, help="Percentage of train set for train-test split")
     parser.add_argument("--step_size", type=int, default=8192, help="Node batch size")
     # Stage 1 - Sparse Training (Variable Selection)
@@ -287,7 +288,7 @@ if __name__ == "__main__":
     parser.add_argument("--n_epochs_refit", type=int, default=1000, help="Number of refit epochs")
     parser.add_argument("--lr_refit", type=float, default=0.01, help="Learning rate for refit")
     # Stage 3 - Gibbs Sampling (Ising Inference)
-    parser.add_argument("--gs_percentage", type=float, default=0.8, help="Percentage of items used as observed")
+    parser.add_argument("--gs_percentage", type=float, default=0.95, help="Percentage of items used as observed")
     parser.add_argument("--n_burn_in", type=int, default=1000, help="Number of burn-in steps")
     parser.add_argument("--n_samples", type=int, default=50000, help="Number of Gibbs samples")
     args = parser.parse_args()

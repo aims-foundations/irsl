@@ -1,26 +1,41 @@
-Downloading GSM8K Responses from HELM Lite.
-Follow [Google's installation](https://cloud.google.com/sdk/docs/install) instructions to install gcloud.
-Then run:
-```
-export LOCAL_BENCHMARK_OUTPUT_PATH=../data/gather_helm_data/lite
-mkdir -p $LOCAL_BENCHMARK_OUTPUT_PATH
-export GCS_BENCHMARK_OUTPUT_PATH=gs://crfm-helm-public/lite/benchmark_output
-gcloud storage rsync -r $GCS_BENCHMARK_OUTPUT_PATH $LOCAL_BENCHMARK_OUTPUT_PATH
-```
-Ref: [CRFM HELM - Downloading Raw Results](https://crfm-helm.readthedocs.io/en/latest/downloading_raw_results/)
-
+# Procedure for running ising_fista.py
+## Python Environment
 ```
 conda create --name deval python=3.10 -y
 conda activate deval
 pip install -r requirements.txt
 ```
 
+## Gather data from HELM
+`json2csv.py` is the same as before except that it also reads in the `instances.json`
+`csv2matrix.py` is the same as before except that it pivot the columns by `"input.text",  "references", "scenario", "benchmark"`
+`irt_calibrate.py` get the z for each question and add them as a column key to the matrix, so now the 5 column keys are `"input.text",  "references", "scenario", "benchmark", "z"`
+`gather_lite_data.ipynb` will get the resmat_lite_all.csv
+```
+cd gather_helm_data
+python json2csv.py
+python csv2matrix.py
+python irt_calibrate.py
+# run `gather_lite_data.ipynb`
+cd ..
+```
+
+## fit the ising model
+```
+python ising_fista.py --resmat_path gather_helm_data/resmat_lite_all.csv
+```
+
+
+
+# Other Environments
+## R Environment
 ```
 conda create -n deval_R r-base=4.3 -c conda-forge -y
 conda activate deval_R
 conda install -c conda-forge r-psychonetrics -y
 ```
 
+## Environment for automatic evaluation on model checkpoints
 ```
 git clone https://github.com/sangttruong/helm
 conda create -n crfm-helm python=3.10 pip -y
@@ -33,7 +48,7 @@ pip install -e .
 pip install vllm==0.7.3
 ```
 
-For Olmo2
+## Environment for automatic evaluation on Olmo2 checkpoints
 ```
 git clone https://github.com/sangttruong/helm
 conda create -n olmo python=3.10 pip -y
@@ -43,5 +58,6 @@ cd helm
 git checkout -b auto_eval origin/auto_eval
 pip uninstall crfm-helm
 pip install -e .
+pip install ai2-olmo
 pip install vllm==0.8.1
 ```
