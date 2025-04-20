@@ -49,15 +49,16 @@ if __name__ == "__main__":
                     sub for sub in os.listdir(full_d_path) if os.path.isdir(f"{full_d_path}/{sub}")
                 ]
                 all_paths.extend([f"{full_d_path}/{sub}" for sub in subdirs])
-    files = ["display_requests.json", "display_predictions.json", "run_spec.json"]
+    files = ["display_requests.json", "display_predictions.json", "run_spec.json", "instances.json"]
     all_paths = [p for p in tqdm(all_paths) if all([exists(f"{p}/{f}") for f in files])]
     all_lists = [[lo(f"{p}/{f}") for p in tqdm(all_paths)] for f in files]
 
     results = []
-    for d_requests, d_predictions, run_specs, paths in tqdm(zip(*all_lists, all_paths), total=len(all_lists[0])):
+    for d_requests, d_predictions, run_specs, instances, paths in tqdm(zip(*all_lists, all_paths), total=len(all_lists[0])):
         d_requests = pd.json_normalize(d_requests)
         d_predictions = pd.json_normalize(d_predictions)
         run_specs = pd.json_normalize(run_specs)
+        instances = pd.json_normalize(instances)
         
         folder_name = paths.split("/")[-2]
         benchmark = folder_name.split("_")[0]
@@ -80,9 +81,9 @@ if __name__ == "__main__":
         
         run_specs["benchmark"] = benchmark
         run_specs = run_specs.loc[run_specs.index.repeat(d_predictions.shape[0])].reset_index(drop=True)
-        overlap_column = d_predictions.columns.intersection(d_requests.columns)
-        d_requests = d_requests.drop(columns=overlap_column)
-        result = pd.concat([d_requests, d_predictions, run_specs], axis=1)
+        
+        result = pd.concat([d_requests, d_predictions, run_specs, instances], axis=1)
+        result = result.loc[:, ~result.columns.duplicated()]
         
         result["request.model"] = result["request.model"] + "-" + n_step
         result["scenario"] = result['name'].str.split(r'[:,]', n=1, expand=True)[0]

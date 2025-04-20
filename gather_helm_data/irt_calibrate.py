@@ -6,6 +6,7 @@ from torch.distributions import Bernoulli
 import pickle
 from torch.optim import LBFGS
 import pandas as pd
+import json
 
 def trainer(parameters, optim, closure, n_iter=100, verbose=True):
     pbar = tqdm(range(n_iter)) if verbose else range(n_iter)
@@ -68,18 +69,22 @@ if __name__ == "__main__":
     new_columns = []
     for col, z_val in zip(results.columns, zs.cpu().numpy()):
         new_columns.append(col + (z_val,))  # Append z value to tuple
-    results.columns = pd.MultiIndex.from_tuples(new_columns, names=["request.prompt", "references", "scenario", "benchmark", "z"])
+    results.columns = pd.MultiIndex.from_tuples(new_columns, names=["input.text", "references", "scenario", "benchmark", "z"])
     
     with open("../data/gather_helm_data/results_with_z.pkl", "wb") as f:
         pickle.dump(results, f)
     
-    
+    texts = results.columns.get_level_values("input.text")
+    zs = results.columns.get_level_values("z").astype(float)
+    z_dict = dict(zip(texts, zs))
+    with open("../data/gather_helm_data/input_to_z.json", "w") as fp:
+        json.dump(z_dict, fp, ensure_ascii=False, indent=2)
     
     # thetas = torch.randn(n_test_takers, requires_grad=True, device=device)
     # optim_theta = LBFGS([thetas], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
     # def closure_theta():
     #     optim_theta.zero_grad()
-    #     mask = ~torch.isnan(data_batch)
+    #     mask = ~torch.isnan(data)
     #     probs = torch.sigmoid(thetas[:, None] + zs[None, :])
     #     loss = -(Bernoulli(probs=probs[mask]).log_prob(data[mask])).mean()
     #     loss.backward()

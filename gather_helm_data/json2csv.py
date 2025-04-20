@@ -17,7 +17,7 @@ def infer_column_types(df):
         
         if set(unique_values).issubset({"True", "False", "0", "1"}):
             df[col] = df[col].map(lambda x: True if x in ["True", "1"] else False).astype("bool")
-        elif np.all(~pd.isna(pd.to_numeric(unique_values, errors="coerce"))): 
+        elif np.all(~pd.isna(pd.to_numeric(unique_values, errors="coerce"))):
             df[col] = pd.to_numeric(df[col], errors="coerce", downcast="integer")
         elif df[col].nunique() / len(df) < 0.1:
             df[col] = df[col].astype("string").astype("category")

@@ -36,12 +36,9 @@ if __name__ == "__main__":
         results['request.model'].isin(models_to_keep) &
         results['input.text'].isin(prompts_to_keep)
     ]
-    
-    # pivot to turn long table into matrix
-    print("start pivot")
-    results = results.pivot(index="request.model", columns=["input.text",  "references", "scenario", "benchmark"], values="dicho_score")
-    print("end pivot")
 
+    # pivot to turn long table into matrix
+    results = results.pivot(index="request.model", columns=["input.text",  "references", "scenario", "benchmark"], values="dicho_score")
     # sort the columns by scenario
     results = results.sort_index(axis=1, level="scenario")
 
