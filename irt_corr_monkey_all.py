@@ -88,11 +88,6 @@ if __name__ == "__main__":
         if col[helm_resmat.columns.names.index("input.text")] == q
     ]
     helm_resmat = helm_resmat.loc[:, filtered_columns]
-    helm_resmat.to_csv(
-        f"helm_resmat_filtered.csv",
-        index=False,
-        header=False,
-    )
     monkey_questions2iscorrects = {q: monkey_questions2iscorrects[q] for q in intersect_questions}
     
     pass_iat1s = np.array([sum(iscorrects)/len(iscorrects) for iscorrects in monkey_questions2iscorrects.values()])
@@ -238,29 +233,6 @@ if __name__ == "__main__":
         pass_datks_est3.append(pass_datk_est3)
     neglog_est_3 = -np.log(np.array(pass_datks_est3))
     
-    # ### 4. distributional estimator with IRT
-    # print("distributional estimator with 2PL")
-    # probs_2pl = pd.read_csv('probs.csv', header=0).values[specific_model_index]
-    
-    # corr = pearsonr(probs_2pl, pass_iat1s).statistic
-    # with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
-    #     plt.figure(figsize=(6,6))
-    #     plt.scatter(probs_2pl, pass_iat1s)
-    #     plt.xlabel("2PL IRT Probability", fontsize=20)
-    #     plt.ylabel("Success Rate", fontsize=20)
-    #     plt.title(r'Pearson Correlation: {:.2f}'.format(corr), fontsize=22)
-    #     plt.tick_params(axis="both", labelsize=14)
-    #     plt.plot([0, 1], [0, 1]) 
-    #     plt.xlim(0, 1)
-    #     plt.ylim(0, 1)  
-    #     plt.savefig(f"2pl_theta_vs_score_corr_{monkey_model_name}_{monkey_scenario}.png", dpi=300)
-    
-    # pass_datks_est4 = []
-    # for k in k_arange:
-    #     pass_datk_est4 = 1 - (-np.log(1- (1 - probs_2pl) ** k)).mean()
-    #     pass_datks_est4.append(pass_datk_est4)
-    # neglog_est_4 = -np.log(np.array(pass_datks_est4))
-    
     with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
         plt.figure(figsize=(6, 6))
         
@@ -285,11 +257,6 @@ if __name__ == "__main__":
         plt.loglog(k_arange, neglog_est_3,
                 linestyle='--',
                 label='1PL IRT')
-        
-        # # 2PL-IRT‐based estimator: dashed
-        # plt.loglog(k_arange, neglog_est_4,
-        #         linestyle='--',
-        #         label='2PL IRT')
         
         plt.xlabel(r'$k$', fontsize=20)
         plt.ylabel(r'$-\log\bigl(\mathrm{pass}_{\mathcal{D}}@k\bigr)$', fontsize=20)
