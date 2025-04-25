@@ -7,10 +7,15 @@ pip install -r requirements.txt
 ```
 
 ## Gather data from HELM
+
 `json2csv.py` is the same as before except that it also reads in the `instances.json`
+
 `csv2matrix.py` is the same as before except that it pivot the columns by `"input.text",  "references", "scenario", "benchmark"`
+
 `irt_calibrate.py` get the z for each question and add them as a column key to the matrix, so now the 5 column keys are `"input.text",  "references", "scenario", "benchmark", "z"`
+
 `gather_lite_data.ipynb` will get the resmat_lite_all.csv
+
 ```
 cd gather_helm_data
 python json2csv.py
@@ -35,6 +40,14 @@ conda activate deval_R
 conda install -c conda-forge r-psychonetrics -y
 ```
 
+## Board Game Environment
+```
+cd boardlaw-paper-v2
+conda create --name board python=3.9 -y
+conda activate board
+pip install -r requirements.txt
+```
+
 ## Environment for automatic evaluation on model checkpoints
 ```
 git clone https://github.com/sangttruong/helm
@@ -46,6 +59,7 @@ git checkout -b auto_eval origin/auto_eval
 pip uninstall crfm-helm
 pip install -e .
 pip install vllm==0.7.3
+pip install hf_xet
 ```
 
 ## Environment for automatic evaluation on Olmo2 checkpoints

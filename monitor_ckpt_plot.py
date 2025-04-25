@@ -28,7 +28,7 @@ if __name__ == "__main__":
         plt.plot(np.arange(len(random_thetas)), random_thetas, label="Random", color="red", linewidth=2)
         # plt.plot(np.arange(len(adaptive_thetas)), adaptive_thetas, label="Adaptive", color="blue", linewidth=2)
         plt.plot(np.arange(len(elo_thetas)), elo_thetas, label="Elo", color="green", linewidth=2)
-        plt.ylabel("Time Step", fontsize=25)
+        plt.xlabel("Time Step", fontsize=25)
         plt.ylabel("Model Ability", fontsize=25)
         plt.tick_params(axis="both", labelsize=25)
         plt.legend(fontsize=25)

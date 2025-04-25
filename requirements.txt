@@ -17,3 +17,4 @@ torchmetrics
 trl==0.12.1
 fastparquet
 statsmodels
+git+https://github.com/andyljones/boardlaw.git#egg=boardlaw
