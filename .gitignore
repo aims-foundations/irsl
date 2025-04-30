@@ -11,6 +11,7 @@ output/
 *.npy
 *.pkl
 *.json
+*.txt
 *.csv
 *.pt
 *.log
