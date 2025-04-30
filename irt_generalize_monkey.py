@@ -62,10 +62,15 @@ def linear_func(z, w, b):
     return w * z + b
 
 if __name__ == "__main__":
-    monkey_model_name = "Llama-3-8B-Instruct" # "Llama-3-70B-Instruct"# "Pythia-6.9B"
-    monkey_scenario = "GSM8K" # "GSM8K"
-    helm_filename = "lite_gsm_results" # "classic_math_results" # "classic_gsm_results" 
-    helm_model_name = "meta/llama-3-8b" # "eleutherai/pythia-6.9b" "meta/llama-3-70b"
+    # monkey_model_name = "Llama-3-8B-Instruct" # "Llama-3-70B-Instruct"
+    # monkey_scenario = "GSM8K"
+    # helm_filename = "lite_gsm_results" # "classic_gsm_results" 
+    # helm_model_name = "meta/llama-3-8b" "meta/llama-3-70b"
+    monkey_model_name = "Pythia-6.9B"
+    monkey_scenario = "MATH"
+    helm_filename = "classic_math_results"
+    helm_model_name = "eleutherai/pythia-6.9b"
+    
     device = "cuda:5"
     
     monkey_dataset = pd.read_json(f"hf://datasets/ScalingIntelligence/monkey_business/{monkey_scenario}_{monkey_model_name}.json")

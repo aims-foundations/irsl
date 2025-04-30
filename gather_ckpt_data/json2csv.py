@@ -28,12 +28,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo_id", type=str, required=True)
     # EleutherAI/pythia-6.9b, EleutherAI/pythia-12b
-    # LLM360/Amber, allenai/OLMo-2-0325-32B, HuggingFaceTB/SmolLM2-1.7B-intermediate-checkpoints
+    # LLM360/Amber, HuggingFaceTB/SmolLM2-1.7B-intermediate-checkpoints
+    parser.add_argument("--benchmark_dir", type=str, required=True)
+    # /lfs/skampere1/0/yuhengtu/deval/helm/src/benchmark_output/runs
+    # /lfs/skampere1/0/sttruong/helm/src/benchmark_output/runs
     args = parser.parse_args()
-    
-    benchmark_dir = "/lfs/skampere1/0/yuhengtu/deval/helm/src/benchmark_output/runs" if args.repo_id in ["EleutherAI/pythia-6.9b", "EleutherAI/pythia-12b"] \
-        else "/lfs/skampere1/0/sttruong/helm/src/benchmark_output/runs"
-    
     task2metric = lo("task2metric.json")
     task2metric = pd.json_normalize(task2metric)
     BENCHMARKS = ["classic", "mmlu", "lite"]
@@ -41,9 +40,9 @@ if __name__ == "__main__":
 
     all_paths = []
     for benchmark in BENCHMARKS:
-        dirs = [d for d in os.listdir(benchmark_dir) if d.startswith(benchmark) and d.split(f"{benchmark}_")[1].startswith(model_name)]
+        dirs = [d for d in os.listdir(args.benchmark_dir) if d.startswith(benchmark) and d.split(f"{benchmark}_")[1].startswith(model_name)]
         for d in dirs:
-            full_d_path = f"{benchmark_dir}/{d}"
+            full_d_path = f"{args.benchmark_dir}/{d}"
             if os.path.isdir(full_d_path):
                 subdirs = [
                     sub for sub in os.listdir(full_d_path) if os.path.isdir(f"{full_d_path}/{sub}")
@@ -64,20 +63,16 @@ if __name__ == "__main__":
         benchmark = folder_name.split("_")[0]
         if args.repo_id in ["EleutherAI/pythia-6.9b", "EleutherAI/pythia-12b"]:
             n_step = folder_name.split("step")[-1]
-        elif args.repo_id == "LLM360/Amber":
-            if "AmberChat" in folder_name or "AmberSafe" in folder_name:
-                n_step = "Chat" if "AmberChat" in folder_name else "Safe"
-            else:
-                n_step = folder_name.split("_")[-1]
-        elif args.repo_id == "allenai/OLMo-2-0325-32B":
-            if "Instruct" in folder_name:
-                n_step = "Instruct"
-            else:
-                regex = re.compile(r"step(\d+)-")
-                n_step = regex.search(folder_name).group(1)
+        # elif args.repo_id == "LLM360/Amber":
+        #     if "AmberChat" in folder_name or "AmberSafe" in folder_name:
+        #         n_step = "Chat" if "AmberChat" in folder_name else "Safe"
+        #     else:
+        #         n_step = folder_name.split("_")[-1]
         elif args.repo_id == "HuggingFaceTB/SmolLM2-1.7B-intermediate-checkpoints":
             regex = re.compile(r"step-(\d+)")
             n_step = regex.search(folder_name).group(1)
+        else:
+            raise RuntimeError("repo_id unknown")
         
         run_specs["benchmark"] = benchmark
         run_specs = run_specs.loc[run_specs.index.repeat(d_predictions.shape[0])].reset_index(drop=True)
@@ -117,4 +112,5 @@ if __name__ == "__main__":
     print("Started saving results")
     output_dir = "../data/gather_ckpt_data"
     os.makedirs(output_dir, exist_ok=True)
-    results.to_pickle(f"{output_dir}/responses_{model_name}.pkl")
+    parts = args.benchmark_dir.split("/")
+    results.to_pickle(f"{output_dir}/responses_{model_name}_{parts[4]}_{parts[2]}.pkl")
