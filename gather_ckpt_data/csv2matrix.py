@@ -7,6 +7,7 @@ import sys
 sys.path.append("..")
 from utils import visualize_response_matrix
 import json
+from huggingface_hub import HfApi, login
 
 def custom_sort_key(x):
     suffix = x.split("-")[-1]
@@ -92,8 +93,17 @@ if __name__ == "__main__":
         new_columns.append(col + (z_val,))  # Append z value to tuple
     results.columns = pd.MultiIndex.from_tuples(new_columns, names=["input.text", "references", "scenario", "benchmark", "z"])
     
-    with open(f"../data/gather_ckpt_data/results_{model_name}_{parts[4]}_{parts[2]}.pkl", "wb") as f:
+    save_path = f"../data/gather_ckpt_data/results_{model_name}_{parts[4]}_{parts[2]}.pkl"
+    with open(save_path, "wb") as f:
         pickle.dump(results, f)
+    login()
+    api = HfApi()
+    api.upload_file(
+        path_or_fileobj=save_path,
+        path_in_repo=save_path.split("/")[-1],
+        repo_id="stair-lab/irsl_response_matrix",
+        repo_type="dataset",
+    )
 
     output_dir = "../result/gather_ckpt_data"
     os.makedirs(output_dir, exist_ok=True)
