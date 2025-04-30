@@ -215,14 +215,14 @@ if __name__ == "__main__":
     test_pass_datks = test_pass_iatk_matrix.mean(0) # shape: (k,)
     test_neglog_gts = -np.log(test_pass_datks)
     
-    # ### 2. distributional estimator
-    # print("2. distributional estimator")
-    # pass_datks_est2 = []
-    # for k in k_arange:
-    #     pass_datk_est2 = 1 - (-np.log(1- (1 - pass_iat1s) ** k)).mean()
-    #     # pass_datk_est2 = 1 - ((1 - pass_iat1s) ** k).mean()
-    #     pass_datks_est2.append(pass_datk_est2)
-    # neglog_est_2 = -np.log(np.array(pass_datks_est2))
+    ### 2. distributional estimator
+    print("2. distributional estimator")
+    train_pass_datks_est2 = []
+    for k in k_arange:
+        train_pass_datk_est2 = 1 - (-np.log(1- (1 - train_pass_iat1s) ** k)).mean()
+        # pass_datk_est2 = 1 - ((1 - pass_iat1s) ** k).mean()
+        train_pass_datks_est2.append(train_pass_datk_est2)
+    train_neglog_est_2 = -np.log(np.array(train_pass_datks_est2))
     
     ### 3. distributional estimator with IRT
     print("3. distributional estimator with IRT")
@@ -269,6 +269,9 @@ with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
     ax.loglog(k_arange, train_neglog_est_1,
               linestyle='--',
               label='Least squares')
+    ax.loglog(k_arange, train_neglog_est_2,
+            linestyle='--',
+            label='Distributional')
     ax.loglog(k_arange, train_neglog_est_3,
               linestyle='--',
               label='1PL IRT')
@@ -288,6 +291,9 @@ with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
     ax.loglog(k_arange, train_neglog_est_1,  # reuse LS fit
               linestyle='--',
               label='Least squares')
+    ax.loglog(k_arange, train_neglog_est_2,
+        linestyle='--',
+        label='Distributional')
     ax.loglog(k_arange, test_neglog_est_3,
               linestyle='--',
               label='1PL IRT')
