@@ -32,12 +32,13 @@ if __name__ == "__main__":
     parser.add_argument("--benchmark_dir", type=str, required=True)
     # /lfs/skampere1/0/yuhengtu/deval/helm/src/benchmark_output/runs
     # /lfs/skampere1/0/sttruong/helm/src/benchmark_output/runs
+    # /lfs/skampere2/0/sttruong/helm/src/benchmark_output/runs
     args = parser.parse_args()
     task2metric = lo("task2metric.json")
     task2metric = pd.json_normalize(task2metric)
     BENCHMARKS = ["classic", "mmlu", "lite"]
     model_name = args.repo_id.split("/")[1]
-
+    
     all_paths = []
     for benchmark in BENCHMARKS:
         dirs = [d for d in os.listdir(args.benchmark_dir) if d.startswith(benchmark) and d.split(f"{benchmark}_")[1].startswith(model_name)]

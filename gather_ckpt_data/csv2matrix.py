@@ -22,11 +22,16 @@ if __name__ == "__main__":
     parser.add_argument("--repo_id", type=str, required=True)
     # EleutherAI/pythia-6.9b, EleutherAI/pythia-12b
     # LLM360/Amber, allenai/OLMo-2-0325-32B, HuggingFaceTB/SmolLM2-1.7B-intermediate-checkpoints
+    parser.add_argument("--benchmark_dir", type=str, required=True)
+    # /lfs/skampere1/0/yuhengtu/deval/helm/src/benchmark_output/runs
+    # /lfs/skampere1/0/sttruong/helm/src/benchmark_output/runs
+    # /lfs/skampere2/0/sttruong/helm/src/benchmark_output/runs
     args = parser.parse_args()
     model_name = args.repo_id.split("/")[1]
+    parts = args.benchmark_dir.split("/")
     
     # Load your pre-generated responses pickle file.
-    with open(f"../data/gather_ckpt_data/responses_{model_name}.pkl", "rb") as f:
+    with open(f"../data/gather_ckpt_data/responses_{model_name}_{parts[4]}_{parts[2]}.pkl", "rb") as f:
         results_full = pickle.load(f)
 
     # keep useful columns, drop nan rows
@@ -56,8 +61,8 @@ if __name__ == "__main__":
     results = results.fillna(-1).astype(int)
     results = results.replace(-1, np.nan)
     
-    # delete all 0 or all 1 cols
-    results = results.loc[:, ~((results.isin([0, np.nan]).all()) | (results.isin([1, np.nan]).all()))]
+    # # delete all 0 or all 1 cols
+    # results = results.loc[:, ~((results.isin([0, np.nan]).all()) | (results.isin([1, np.nan]).all()))]
 
     # Compute the overall average for each scenario manually
     scenario_means = {}
@@ -87,9 +92,9 @@ if __name__ == "__main__":
         new_columns.append(col + (z_val,))  # Append z value to tuple
     results.columns = pd.MultiIndex.from_tuples(new_columns, names=["input.text", "references", "scenario", "benchmark", "z"])
     
-    with open(f"../data/gather_ckpt_data/results_{model_name}.pkl", "wb") as f:
+    with open(f"../data/gather_ckpt_data/results_{model_name}_{parts[4]}_{parts[2]}.pkl", "wb") as f:
         pickle.dump(results, f)
 
     output_dir = "../result/gather_ckpt_data"
     os.makedirs(output_dir, exist_ok=True)
-    visualize_response_matrix(results, results, f"{output_dir}/response_matrix_{model_name}.png")
+    visualize_response_matrix(results, results, f"{output_dir}/response_matrix_{model_name}_{parts[4]}_{parts[2]}.png")
