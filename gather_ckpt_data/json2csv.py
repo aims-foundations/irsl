@@ -62,14 +62,14 @@ if __name__ == "__main__":
         
         folder_name = paths.split("/")[-2]
         benchmark = folder_name.split("_")[0]
-        if args.repo_id in ["EleutherAI/pythia-6.9b", "EleutherAI/pythia-12b"]:
+        if args.repo_id.startswith("EleutherAI/pythia"):
             n_step = folder_name.split("step")[-1]
-        # elif args.repo_id == "LLM360/Amber":
-        #     if "AmberChat" in folder_name or "AmberSafe" in folder_name:
-        #         n_step = "Chat" if "AmberChat" in folder_name else "Safe"
-        #     else:
-        #         n_step = folder_name.split("_")[-1]
-        elif args.repo_id == "HuggingFaceTB/SmolLM2-1.7B-intermediate-checkpoints":
+        elif args.repo_id == "LLM360/Amber":
+            # if "AmberChat" in folder_name or "AmberSafe" in folder_name:
+            #     n_step = "Chat" if "AmberChat" in folder_name else "Safe"
+            # else:
+            n_step = folder_name.split("_")[-1]
+        elif args.startswith("HuggingFaceTB/SmolLM2"):
             regex = re.compile(r"step-(\d+)")
             n_step = regex.search(folder_name).group(1)
         else:

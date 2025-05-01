@@ -23,7 +23,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo_id", type=str, required=True)
     # EleutherAI/pythia-6.9b, EleutherAI/pythia-12b
-    # LLM360/Amber, allenai/OLMo-2-0325-32B, HuggingFaceTB/SmolLM2-1.7B-intermediate-checkpoints
+    # LLM360/Amber, HuggingFaceTB/SmolLM2-1.7B-intermediate-checkpoints
     parser.add_argument("--benchmark_dir", type=str, required=True)
     # /lfs/skampere1/0/yuhengtu/deval/helm/src/benchmark_output/runs
     # /lfs/skampere1/0/sttruong/helm/src/benchmark_output/runs
