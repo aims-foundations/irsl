@@ -27,8 +27,9 @@ def infer_column_types(df):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo_id", type=str, required=True)
-    # EleutherAI/pythia-6.9b, EleutherAI/pythia-12b, EleutherAI/pythia-2.8b
+    # EleutherAI/pythia-12b, EleutherAI/pythia-6.9b, EleutherAI/pythia-2.8b
     # EleutherAI/pythia-1.4b, EleutherAI/pythia-1b, EleutherAI/pythia-410m
+    # EleutherAI/pythia-160m, EleutherAI/pythia-70m, EleutherAI/pythia-14m
     # LLM360/Amber
     # HuggingFaceTB/SmolLM2-1.7B-intermediate-checkpoints
     # HuggingFaceTB/SmolLM2-360M-intermediate-checkpoints
