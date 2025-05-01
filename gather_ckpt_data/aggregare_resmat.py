@@ -21,25 +21,25 @@ def aggregate(file_list):
         merged = merged.sort_index(key=lambda idx: idx.str.split("-").str[-1].astype(int))
         return merged
 
-    to_keep = []
-    for idx, group in merged.groupby(level=0, sort=False):
-        if len(group) == 1:
-            to_keep.append(group.index[0])
-        else:
-            # compute count of non-null entries for each row
-            nonnull_counts = group.notna().sum(axis=1)
-            max_count = nonnull_counts.max()
-            # candidates with the maximal count
-            candidates = nonnull_counts[nonnull_counts == max_count].index.tolist()
-            # if tie, pick one at random
-            chosen = candidates[0] if len(candidates) == 1 else random.choice(candidates)
-            to_keep.append(chosen)
+    keep_pos = []
+    for label, group in merged.groupby(level=0, sort=False):
+        # find all the integer positions of this label in merged.index
+        positions = [i for i, lab in enumerate(merged.index) if lab == label]
 
-    # 5. Return only the selected rows
-    result = merged.loc[to_keep]
-    result = result.sort_index(key=lambda idx: idx.str.split("-").str[-1].astype(int))
-    
-    return result
+        if len(positions) == 1:
+            keep_pos.append(positions[0])
+        else:
+            # For each pos, count non-null entries
+            counts = [merged.iloc[i].notna().sum() for i in positions]
+            # find the max count
+            max_count = max(counts)
+            # get all positions with that max count
+            best = [pos for pos, cnt in zip(positions, counts) if cnt == max_count]
+            keep_pos.append(best[0])
+
+    # now select by integer location, then sort
+    result = merged.iloc[keep_pos]
+    return result.sort_index(key=lambda idx: idx.str.split("-").str[-1].astype(int))
 
 if __name__ == "__main__":
     cache_folder = snapshot_download(

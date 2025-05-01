@@ -9,11 +9,10 @@ from tueplots import bundles
 bundles.icml2024()
 import numpy as np
 np.random.seed(0)
-torch.manual_seed(0)
+torch.manual_seed(42)
 from scipy.optimize import curve_fit
 import os
-import random
-random.seed(42)
+from sklearn.metrics import mean_squared_error
 
 probs_holder = {'current': None}
 
@@ -62,24 +61,35 @@ def linear_func(z, w, b):
     return w * z + b
 
 if __name__ == "__main__":
-    # monkey_model_name = "Llama-3-8B-Instruct" # "Llama-3-70B-Instruct"
-    # monkey_scenario = "GSM8K"
-    # helm_filename = "lite_gsm_results" # "classic_gsm_results" 
-    # helm_model_name = "meta/llama-3-8b" "meta/llama-3-70b"
-    monkey_model_name = "Pythia-6.9B"
-    monkey_scenario = "MATH"
-    helm_filename = "classic_math_results"
-    helm_model_name = "eleutherai/pythia-6.9b"
+    # monkey_model_name = "Pythia-6.9B"
+    # monkey_scenario = "MATH"
+    # helm_filename = "classic_math_results"
+    # helm_model_name = "eleutherai/pythia-6.9b"
     
-    device = "cuda:5"
-    
+    choose = "8"
+    monkey_model_name = "Llama-3-8B-Instruct" if choose=="8" else "Llama-3-70B-Instruct"
+    monkey_scenario = "GSM8K"
+    helm_filename = "lite_gsm_results"
+    helm_model_name = "meta/llama-3-8b" if choose=="8" else "meta/llama-3-70b"
     monkey_dataset = pd.read_json(f"hf://datasets/ScalingIntelligence/monkey_business/{monkey_scenario}_{monkey_model_name}.json")
-    monkey_questions2iscorrects = {
-        row["question"]: row["is_corrects"]
-        for _, row in monkey_dataset.iterrows()
-    }
+    
+    # monkey_model_name = "Pythia_6.9B"
+    # monkey_scenario = "GSM8K"
+    # helm_filename = "classic_gsm_results" 
+    # helm_model_name = 'eleutherai/pythia-6.9b' # 'eleutherai/pythia-12b-v0'
+    # monkey_dataset = pd.read_json(f"data/rylan_monkey/{monkey_scenario}_{monkey_model_name}.json")
+    
+    device = "cuda:1"
+    output_dir = f"result/monkey_generalize/{monkey_model_name}_{monkey_scenario}"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    monkey_questions2iscorrects = {row["question"]: row["is_corrects"] for _, row in monkey_dataset.iterrows()}
+    print(f"len(monkey_questions2iscorrects): {len(monkey_questions2iscorrects)}")
+    lengths = [len(l) for l in monkey_questions2iscorrects.values()]
+    print(f"set(lengths): {set(lengths)}")
     with open(f"/lfs/skampere1/0/sttruong/deval/gather_helm_data/{helm_filename}.pkl", "rb") as f:
         helm_resmat = pickle.load(f)
+    print(f"helm_resmat.shape: {helm_resmat.shape}")
     helm_questions = list(helm_resmat.columns.get_level_values("input.text"))
 
     helm_question_set = set(helm_questions)
@@ -100,7 +110,7 @@ if __name__ == "__main__":
     added_data = torch.from_numpy(added_data).to(device=device).double().T
     data = torch.cat([data, added_data], dim=0)
     n_test_takers, n_items = data.shape
-    print(data.shape)
+    print(f"data.shape: {data.shape}")
     B = 50000
     n_thetas_nuisance = 150
     optimized_z = []
@@ -124,11 +134,15 @@ if __name__ == "__main__":
         optimized_z.append(z_optimized)
     zs = torch.cat(optimized_z)
 
-    n = zs.size(0)
-    split = n // 2
-    sorted_desc = torch.argsort(zs, descending=True)
-    train_idxs = sorted_desc[:split].tolist()
-    test_idxs  = sorted_desc[split:].tolist()
+    # split = n_items // 2
+    # sorted_desc = torch.argsort(zs, descending=True)
+    # train_idxs = sorted_desc[:split].tolist()
+    # test_idxs  = sorted_desc[split:].tolist()
+
+    indices = torch.randperm(n_items)
+    split = int(0.5 * n_items)
+    train_idxs = indices[:split].tolist()
+    test_idxs  = indices[split:].tolist()
 
     train_questions = [intersect_questions[i] for i in train_idxs]
     test_questions  = [intersect_questions[i] for i in test_idxs]
@@ -166,10 +180,10 @@ if __name__ == "__main__":
     plt.ylabel('monkey_zs')
     plt.legend()
     plt.tight_layout()
-    plt.savefig(f"helm_zs_vs_monkey_zs.png", dpi=300)
+    plt.savefig(f"{output_dir}/helm_zs_vs_monkey_zs.png", dpi=300)
     
     train_pass_iat1s = np.array([sum(iscorrects)/len(iscorrects) for iscorrects in train_monkey_questions2iscorrects.values()])
-    cache_path = f"train_pass_iatk_matrix_{monkey_model_name}_{monkey_scenario}.npy"
+    cache_path = f"{output_dir}/train_pass_iatk_matrix.npy"
     if os.path.exists(cache_path):
         train_pass_iatk_matrix = np.load(cache_path)
     else:
@@ -185,10 +199,10 @@ if __name__ == "__main__":
         ])  # shape: (n_questions, k)
         np.save(cache_path, train_pass_iatk_matrix)
     _, k = train_pass_iatk_matrix.shape
-    print(train_pass_iatk_matrix.shape)
+    print(f"train_pass_iatk_matrix.shape: {train_pass_iatk_matrix.shape}")
     k_arange = np.arange(1, k + 1)
     
-    cache_path = f"test_pass_iatk_matrix_{monkey_model_name}_{monkey_scenario}.npy"
+    cache_path = f"{output_dir}/test_pass_iatk_matrix.npy"
     if os.path.exists(cache_path):
         test_pass_iatk_matrix = np.load(cache_path)
     else:
@@ -205,7 +219,6 @@ if __name__ == "__main__":
         np.save(cache_path, test_pass_iatk_matrix)
     
     ### 1. least square estimator
-    print("1. least square estimator")
     train_pass_datks = train_pass_iatk_matrix.mean(0) # shape: (k,)
     train_neglog_gts = -np.log(train_pass_datks)
     popt, _ = curve_fit(power_law_func, k_arange, train_neglog_gts)
@@ -216,7 +229,6 @@ if __name__ == "__main__":
     test_neglog_gts = -np.log(test_pass_datks)
     
     ### 2. distributional estimator
-    print("2. distributional estimator")
     train_pass_datks_est2 = []
     for k in k_arange:
         train_pass_datk_est2 = 1 - (-np.log(1- (1 - train_pass_iat1s) ** k)).mean()
@@ -225,7 +237,6 @@ if __name__ == "__main__":
     train_neglog_est_2 = -np.log(np.array(train_pass_datks_est2))
     
     ### 3. distributional estimator with IRT
-    print("3. distributional estimator with IRT")
     specific_model_index = helm_resmat.index.tolist().index(helm_model_name)
     
     train_data_specific_model = data[-1][train_idxs]
@@ -240,6 +251,8 @@ if __name__ == "__main__":
         probs_holder['current'] = probs.detach()
         return loss
     theta = trainer([theta], optim_theta, closure_theta)[0].detach()
+    print(f"theta: {theta.item()}")
+    breakpoint()
     train_probs = torch.sigmoid(theta + train_zs).cpu().numpy() # shape: (n_questions,)
     train_pass_datks_est3 = []
     for k in k_arange:
@@ -255,7 +268,12 @@ if __name__ == "__main__":
         test_pass_datks_est3.append(test_pass_datk_est3)
     test_neglog_est_3 = -np.log(np.array(test_pass_datks_est3))
     
-    
+mse_train_ls    = mean_squared_error(train_neglog_gts, train_neglog_est_1)
+mse_train_dist  = mean_squared_error(train_neglog_gts, train_neglog_est_2)
+mse_train_rasch = mean_squared_error(train_neglog_gts, train_neglog_est_3)
+mse_test_ls     = mean_squared_error(test_neglog_gts, train_neglog_est_1)
+mse_test_dist   = mean_squared_error(test_neglog_gts, train_neglog_est_2)
+mse_test_rasch  = mean_squared_error(test_neglog_gts, test_neglog_est_3)
 with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
     fig, axes = plt.subplots(1, 2, figsize=(12, 6))
     
@@ -268,14 +286,14 @@ with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
               label='Ground truth')
     ax.loglog(k_arange, train_neglog_est_1,
               linestyle='--',
-              label='Least squares')
+              label=f'Least squares (MSE={mse_train_ls:.2e})')
     ax.loglog(k_arange, train_neglog_est_2,
-            linestyle='--',
-            label='Distributional')
+              linestyle='--',
+              label=f'Distributional (MSE={mse_train_dist:.2e})')
     ax.loglog(k_arange, train_neglog_est_3,
               linestyle='--',
-              label='1PL IRT')
-    ax.set_xlabel(r'$k$', fontsize=20)
+              label=f'Rasch (MSE={mse_train_rasch:.2e})')
+    ax.set_xlabel(r'$\log k$', fontsize=20)
     ax.set_ylabel(r'$-\log\bigl(\mathrm{pass}_{\mathcal{D}}@k\bigr)$', fontsize=20)
     ax.tick_params(axis="both", labelsize=14)
     ax.legend(fontsize=14)
@@ -288,20 +306,20 @@ with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
               color='black',
               linewidth=2,
               label='Ground truth')
-    ax.loglog(k_arange, train_neglog_est_1,  # reuse LS fit
+    ax.loglog(k_arange, train_neglog_est_1,
               linestyle='--',
-              label='Least squares')
+              label=f'Least squares (MSE={mse_test_ls:.2e})')
     ax.loglog(k_arange, train_neglog_est_2,
-        linestyle='--',
-        label='Distributional')
+              linestyle='--',
+              label=f'Distributional (MSE={mse_test_dist:.2e})')
     ax.loglog(k_arange, test_neglog_est_3,
               linestyle='--',
-              label='1PL IRT')
-    ax.set_xlabel(r'$k$', fontsize=20)
+              label=f'Rasch (MSE={mse_test_rasch:.2e})')
+    ax.set_xlabel(r'$\log k$', fontsize=20)
     ax.set_ylabel(r'$-\log\bigl(\mathrm{pass}_{\mathcal{D}}@k\bigr)$', fontsize=20)
     ax.tick_params(axis="both", labelsize=14)
     ax.legend(fontsize=14)
     ax.set_title('Test', fontsize=16)
 
     fig.tight_layout()
-    fig.savefig(f"generalize_estimator_comparison_{monkey_model_name}_{monkey_scenario}.png", dpi=300)
+    fig.savefig(f"{output_dir}/monkey_generalize_{monkey_model_name}_{monkey_scenario}.png", dpi=300, bbox_inches="tight")

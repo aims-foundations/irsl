@@ -125,12 +125,12 @@ if __name__ == "__main__":
                 label='Ground truth')
         ax.plot(flops, train_kaplans,
                 linestyle='--',
-                label='Classic Kaplan')
+                label='Kaplan')
         ax.plot(flops, train_irts,
                 linestyle='--',
-                label='1PL IRT')
+                label='Rasch')
         ax.set_xlabel("FLOPs (1e21)", fontsize=20)
-        ax.set_ylabel("CTT", fontsize=20)
+        ax.set_ylabel("Mean MMLU Accuracy", fontsize=20)
         ax.set_ylim(0, 1)
         ax.tick_params(axis="both", labelsize=14)
         ax.legend(fontsize=14)
@@ -145,16 +145,16 @@ if __name__ == "__main__":
                 label='Ground truth')
         ax.plot(flops, train_kaplans,  # reuse LS fit
                 linestyle='--',
-                label='Classic Kaplan')
+                label='Kaplan')
         ax.plot(flops, test_irts,
                 linestyle='--',
-                label='1PL IRT')
+                label='Rasch')
         ax.set_xlabel("FLOPs (1e21)", fontsize=20)
-        ax.set_ylabel("CTT", fontsize=20)
+        ax.set_ylabel("Mean MMLU Accuracy", fontsize=20)
         ax.set_ylim(0, 1)
         ax.tick_params(axis="both", labelsize=14)
         ax.legend(fontsize=14)
         ax.set_title('Test', fontsize=16)
 
         fig.tight_layout()
-        fig.savefig(f"kaplan_{model_name}.png", dpi=300, bbox_inches="tight")
+        fig.savefig(f"downstream_{model_name}.png", dpi=300, bbox_inches="tight")
