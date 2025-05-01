@@ -8,6 +8,7 @@ sys.path.append("..")
 from utils import visualize_response_matrix
 import json
 from huggingface_hub import HfApi, login
+from huggingface_hub import snapshot_download
 
 def custom_sort_key(x):
     suffix = x.split("-")[-1]
@@ -83,7 +84,11 @@ if __name__ == "__main__":
     print(f"missing percentage: {results.isna().values.sum() / (results.shape[0] * results.shape[1])}")
     
     # prompt to z
-    with open( "../data/gather_helm_data/input_to_z.json", "r", encoding="utf-8") as fp:
+    cache_folder = snapshot_download(
+        repo_id="stair-lab/irsl_response_matrix",
+        repo_type="dataset",
+    )
+    with open( f"{cache_folder}/input_to_z.json", "r", encoding="utf-8") as fp:
         input_text_to_z = json.load(fp)
 
     new_columns = []

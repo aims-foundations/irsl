@@ -71,10 +71,11 @@ if __name__ == "__main__":
     time_steps = np.array([float(name.split("-")[-1]) for name in results.index])
     flops = time_steps * 2097152.0 * 1.7e9 * 6.0 / 1e21
     
-    sorted_indices = torch.argsort(zs, descending=True)
-    split_idx = n_items // 2
-    train_indices = sorted_indices[:split_idx]   # Smaller zs → train
-    test_indices = sorted_indices[split_idx:]    # Larger zs → test
+    # sorted_indices = torch.argsort(zs, descending=True)
+    # split_idx = n_items // 2
+    # train_indices = sorted_indices[:split_idx]   # Smaller zs → train
+    # test_indices = sorted_indices[split_idx:]    # Larger zs → test
+    
     perm = torch.randperm(n_items)
     split_idx = n_items // 2
     train_indices = perm[:split_idx]
