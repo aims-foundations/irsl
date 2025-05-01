@@ -27,12 +27,18 @@ def infer_column_types(df):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo_id", type=str, required=True)
-    # EleutherAI/pythia-6.9b, EleutherAI/pythia-12b
-    # LLM360/Amber, HuggingFaceTB/SmolLM2-1.7B-intermediate-checkpoints
+    # EleutherAI/pythia-6.9b, EleutherAI/pythia-12b, EleutherAI/pythia-2.8b
+    # EleutherAI/pythia-1.4b, EleutherAI/pythia-1b, EleutherAI/pythia-410m
+    # LLM360/Amber
+    # HuggingFaceTB/SmolLM2-1.7B-intermediate-checkpoints
+    # HuggingFaceTB/SmolLM2-360M-intermediate-checkpoints
+    # HuggingFaceTB/SmolLM2-135M-intermediate-checkpoints
     parser.add_argument("--benchmark_dir", type=str, required=True)
     # /lfs/skampere1/0/yuhengtu/deval/helm/src/benchmark_output/runs
     # /lfs/skampere1/0/sttruong/helm/src/benchmark_output/runs
     # /lfs/skampere2/0/sttruong/helm/src/benchmark_output/runs
+    # /lfs/hyperturing1/0/sttruong/helm/src/benchmark_output/runs
+    # /lfs/hyperturing2/0/yuhengtu/helm/src/benchmark_output/runs
     args = parser.parse_args()
     task2metric = lo("task2metric.json")
     task2metric = pd.json_normalize(task2metric)
