@@ -75,7 +75,7 @@ if __name__ == "__main__":
             #     n_step = "Chat" if "AmberChat" in folder_name else "Safe"
             # else:
             n_step = folder_name.split("_")[-1]
-        elif args.startswith("HuggingFaceTB/SmolLM2"):
+        elif args.repo_id.startswith("HuggingFaceTB/SmolLM2"):
             regex = re.compile(r"step-(\d+)")
             n_step = regex.search(folder_name).group(1)
         else:
