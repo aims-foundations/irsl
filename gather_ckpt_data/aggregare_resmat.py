@@ -7,6 +7,7 @@ import sys
 sys.path.append("..")
 from utils import visualize_response_matrix
 from tqdm import tqdm
+import random
 
 def aggregate(file_list):
     assert len(file_list) == 2, "Expected exactly two files to aggregate."
@@ -14,25 +15,31 @@ def aggregate(file_list):
     with open(file_list[0], "rb") as f1, open(file_list[1], "rb") as f2:
         df1 = pickle.load(f1)
         df2 = pickle.load(f2)
+    merged = pd.concat([df1, df2])
 
-    # Identify which is ascending and which is descending
-    index1 = df1.index.to_list()
-    index2 = df2.index.to_list()
-    if index1[0] < index2[-1]:
-        df_asc, df_desc = df1, df2
-    else:
-        df_asc, df_desc = df2, df1
+    if not merged.index.duplicated().any():
+        merged = merged.sort_index(key=lambda idx: idx.str.split("-").str[-1].astype(int))
+        return merged
 
-    # Drop last row of ascending and first row of descending
-    df_asc_trimmed = df_asc.iloc[:-1]
-    df_desc_trimmed = df_desc.iloc[1:]
+    to_keep = []
+    for idx, group in merged.groupby(level=0, sort=False):
+        if len(group) == 1:
+            to_keep.append(group.index[0])
+        else:
+            # compute count of non-null entries for each row
+            nonnull_counts = group.notna().sum(axis=1)
+            max_count = nonnull_counts.max()
+            # candidates with the maximal count
+            candidates = nonnull_counts[nonnull_counts == max_count].index.tolist()
+            # if tie, pick one at random
+            chosen = candidates[0] if len(candidates) == 1 else random.choice(candidates)
+            to_keep.append(chosen)
 
-    # Concatenate and remove duplicate rows based on index
-    merged = pd.concat([df_asc_trimmed, df_desc_trimmed])
-    merged = merged[~merged.index.duplicated(keep="first")]
-    merged = merged.sort_index(key=lambda idx: idx.str.split("-").str[-1].astype(int))
-
-    return merged
+    # 5. Return only the selected rows
+    result = merged.loc[to_keep]
+    result = result.sort_index(key=lambda idx: idx.str.split("-").str[-1].astype(int))
+    
+    return result
 
 if __name__ == "__main__":
     cache_folder = snapshot_download(
