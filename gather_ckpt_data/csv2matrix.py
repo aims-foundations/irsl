@@ -10,14 +10,14 @@ import json
 from huggingface_hub import HfApi, login
 from huggingface_hub import snapshot_download
 
-def custom_sort_key(x):
-    suffix = x.split("-")[-1]
-    if suffix == "Chat":
-        return float('inf') - 1  # Second last
-    elif suffix in ["Safe", "Instruct"]:
-        return float('inf')      # Last
-    else:
-        return int(suffix)  # Regular numeric sorting
+# def custom_sort_key(x):
+#     suffix = x.split("-")[-1]
+#     if suffix == "Chat":
+#         return float('inf') - 1  # Second last
+#     elif suffix in ["Safe", "Instruct"]:
+#         return float('inf')      # Last
+#     else:
+#         return int(suffix)  # Regular numeric sorting
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -53,7 +53,8 @@ if __name__ == "__main__":
     # pivot to turn long table into matrix
     results = results.pivot(index="request.model", columns=["input.text",  "references", "scenario", "benchmark"], values="dicho_score")
     # Reindex the DataFrame according to the step order
-    sorted_index = sorted(results.index, key=custom_sort_key)
+    # sorted_index = sorted(results.index, key=custom_sort_key)
+    sorted_index = sorted(results.index, key=lambda x: x.split("-")[-1])
     results = results.reindex(sorted_index)
 
     # sort the columns by scenario
