@@ -95,7 +95,7 @@ def sample_outputs_from_policy_model_and_write_to_disk(
     #     evaluate_fn = is_correct_minerva
     if dataset in ["mmlu", "commonsense"]:
         evaluate_fn = exact_match
-    elif dataset in ["med_qa", "legalbench"]:
+    elif dataset in ["med_qa", "legalbench", "bbq", "lsat_qa", "legal_support"]:
         evaluate_fn = quasi_exact_match
     else:
         raise NotImplementedError(f"Dataset {dataset} is not implemented.")

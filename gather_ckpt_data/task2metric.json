@@ -20,7 +20,7 @@
         "ice": "",
         "imdb": "quasi_exact_match",
         "legal_support": "quasi_exact_match",
-        "lsat_qa": "exact_match",
+        "lsat_qa": "quasi_exact_match",
         "math": "math_equiv_chain_of_thought",
         "mmlu": "exact_match",
         "msmarco": "",

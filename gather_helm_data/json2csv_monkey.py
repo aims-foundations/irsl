@@ -35,6 +35,13 @@ if __name__ == "__main__":
         assert exists(dir_path)
         latest_release = sorted(os.listdir(dir_path))[-1]
         folder_dict = lo(f"{dir_path}/{latest_release}/runs_to_run_suites.json")
+        if benchmark == "classic":
+            filtered_dict = {}
+            for k, v in folder_dict.items():
+                prefix = k.split(':', 1)[0].split(',', 1)[0]
+                if prefix in ["bbq", "lsat_qa", "legal_support"]:
+                    filtered_dict[k] = v
+            folder_dict = filtered_dict
         all_paths += [f"{input_dir}/{benchmark}/runs/{s}/{r}" for r, s in folder_dict.items()]
 
     files = ["display_requests.json", "display_predictions.json", "run_spec.json", "scenario_state.json"]

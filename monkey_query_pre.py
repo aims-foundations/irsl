@@ -8,14 +8,26 @@ from huggingface_hub import HfApi
 from huggingface_hub import login
 
 def get_solution(row):
+    # Parse the references to find the correct answer text
     refs = json.loads(row["instance.references"])
+    correct_text = None
     for ref in refs:
-        if "correct" in ref["tags"]:
+        if "correct" in ref.get("tags", []):
             correct_text = ref["output"]["text"]
-            for letter in ["A", "B", "C", "D"]:
-                if row[f"output_mapping.{letter}"] == correct_text:
-                    return letter
-    raise ValueError(f"No correct solution found for row with index {row.name}")
+            break
+    if correct_text is None:
+        raise ValueError(f"No correct solution found for row with index {row.name}")
+
+    # Dynamically identify all output_mapping columns (e.g., output_mapping.A, output_mapping.B, etc.)
+    choice_columns = [col for col in row.index if col.startswith("output_mapping.")]
+
+    # Iterate through the available choices to find the matching letter
+    for col in choice_columns:
+        if row[col] == correct_text:
+            return col.split(".")[-1]  # Extract the letter (e.g., 'A' from 'output_mapping.A')
+
+    raise ValueError(f"Correct answer text not found among choices for row with index {row.name}")
+
 
 if __name__ == "__main__":
     model_name = "meta/llama-3-8b"
@@ -23,28 +35,30 @@ if __name__ == "__main__":
     # benchmark_name = "mmlu"
     # scenario_name = "mmlu"
     
-    benchmark_name = "lite"
+    # benchmark_name = "lite"
     # scenario_name = "commonsense"
-    scenario_name = "med_qa"
-    # # scenario_name = "legalbench"
+    # scenario_name = "med_qa"
+    # scenario_name = "legalbench"
     
-    # read long table
+    benchmark_name = "classic"
+    # scenario_name = "legal_support"
+    scenario_name = "bbq"
+    # scenario_name = "lsat_qa"
+    
     with open(f"data/gather_helm_data/responses_monkey_{benchmark_name}.pkl", "rb") as f:
         results_full = pickle.load(f)
     
     results_full = results_full.sample(frac=1).reset_index(drop=True)
-    results = results_full[[
-        "request.model",
-        "instance.input.text", "request.prompt",
-        "instance.references", "output_mapping.A", "output_mapping.B", "output_mapping.C", "output_mapping.D",
-        "scenario", "benchmark",
-        "dicho_score"]]
-    results = results.dropna(subset=[
-        "request.model",
-        "instance.input.text", "request.prompt",
-        "instance.references", "output_mapping.A", "output_mapping.B", "output_mapping.C", "output_mapping.D",
-        "scenario", "benchmark",
-        "dicho_score"])
+    all_choice_columns = [col for col in results_full.columns if col.startswith("output_mapping.")]
+    scenario_mask = results_full["scenario"] == scenario_name
+    choice_columns = [
+        col for col in all_choice_columns
+        if not results_full.loc[scenario_mask, col].isna().all()
+    ]
+    results = results_full[
+        ["request.model", "instance.input.text", "request.prompt", "instance.references", "scenario", "benchmark", "dicho_score"] + choice_columns
+    ]
+    results = results.dropna(subset=["request.model", "instance.input.text", "request.prompt", "instance.references", "scenario", "benchmark", "dicho_score"])
     
     # drop the dicho_score of 0.5
     results = results[results["dicho_score"] != 0.5]
@@ -67,17 +81,25 @@ if __name__ == "__main__":
         results['request.model'].isin(models_to_keep) &
         results['instance.input.text'].isin(prompts_to_keep)
     ]
-    
+    breakpoint() # has 01
+
     # filter out one scenario, delete all 0 or all 1 cols
     results = results[
         (results["benchmark"] == benchmark_name) &
         (results["scenario"] == scenario_name)
     ]
+    breakpoint() # all 1??
+    
     results["dicho_score"] = results["dicho_score"].astype(int)
-    results = results.groupby(["instance.input.text", "scenario", "benchmark"], observed=True).filter(lambda grp: grp["dicho_score"].nunique() > 1)
+    results = results.groupby(["instance.input.text", "scenario", "benchmark"], observed=False).filter(lambda grp: grp["dicho_score"].nunique() > 1)
     
     # filter model row, make sure number of few shot of the request fit in the model's max input token length
-    results = results[(results["request.model"] == model_name)]
+    if benchmark_name=="classic":
+        # classic does not have llama-3-8b, this model also has 8192 context length, same as llama-3-8b
+        context_model_name = "anthropic/stanford-online-all-v4-s3"
+    else:
+        context_model_name = model_name
+    results = results[(results["request.model"] == context_model_name)]
     print(len(results))
     
     # get "solution column", should be ABCD
