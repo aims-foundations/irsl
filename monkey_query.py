@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from vllm import LLM, SamplingParams, RequestOutput
 from vllm.distributed.parallel_state import destroy_model_parallel
 
-from monkey_query_utils import create_prompts_and_answers, exact_match, quasi_exact_match
+from monkey_query_utils import create_prompts_and_answers, exact_match, quasi_exact_match, is_equiv_chain_of_thought
 
 def generate_outputs_from_model(
     model_nickname: str = "meta-llama/Meta-Llama-3-8B-Instruct",
@@ -91,12 +91,12 @@ def sample_outputs_from_policy_model_and_write_to_disk(
 
     # if dataset == "gsm8k":
     #     evaluate_fn = is_correct_gsm8k
-    # elif dataset == "math":
-    #     evaluate_fn = is_correct_minerva
     if dataset in ["mmlu", "commonsense"]:
         evaluate_fn = exact_match
     elif dataset in ["med_qa", "legalbench", "bbq", "lsat_qa", "legal_support"]:
         evaluate_fn = quasi_exact_match
+    elif dataset == "math":
+        evaluate_fn = is_equiv_chain_of_thought
     else:
         raise NotImplementedError(f"Dataset {dataset} is not implemented.")
 
