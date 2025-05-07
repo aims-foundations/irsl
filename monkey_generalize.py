@@ -53,6 +53,11 @@ def estimate_success_rate_at_k_per_problem(n: int, c: int, k: int) -> float:
     if n - c < k: 
         return 1.0
     return 1.0 - np.prod(1.0 - k / np.arange(n - c + 1, n + 1))
+
+def cal_passdatk(passiat1, k):
+    passiatk = 1 - (1 - passiat1) ** k
+    passdatk = passiatk.mean()
+    return passdatk
                               
 def power_law_func(k, a, b):
     return a * k ** (-b)
@@ -61,25 +66,34 @@ def linear_func(z, w, b):
     return w * z + b
 
 if __name__ == "__main__":
-    # monkey_model_name = "Pythia-6.9B"
-    # monkey_scenario = "MATH"
-    # helm_filename = "classic_math_results"
-    # helm_model_name = "eleutherai/pythia-6.9b"
-    
-    choose = "8"
-    monkey_model_name = "Llama-3-8B-Instruct" if choose=="8" else "Llama-3-70B-Instruct"
-    monkey_scenario = "GSM8K"
-    helm_filename = "lite_gsm_results"
-    helm_model_name = "meta/llama-3-8b" if choose=="8" else "meta/llama-3-70b"
-    monkey_dataset = pd.read_json(f"hf://datasets/ScalingIntelligence/monkey_business/{monkey_scenario}_{monkey_model_name}.json")
-    
-    # monkey_model_name = "Pythia_6.9B"
+    monkey_model_name = "Pythia-6.9B"
+    monkey_scenario = "MATH"
+    helm_filename = "classic_math_results"
+    helm_model_name = "eleutherai/pythia-6.9b"
+    monkey_dataset1 = pd.read_json(f"hf://datasets/ScalingIntelligence/monkey_business/{monkey_scenario}_{monkey_model_name}.json")
+    monkey_dataset2 = pd.read_json(f"data/rylan_monkey/{monkey_scenario}_{monkey_model_name.replace('-', '_')}.json")
+    # some rows' is_corrects len = 128
+    # monkey_dataset2 = monkey_dataset2[monkey_dataset2['is_corrects'].apply(lambda x: len(x) == 10000)]
+    monkey_dataset1 = monkey_dataset1[["question", "is_corrects"]]
+    monkey_dataset2 = monkey_dataset2[["question", "is_corrects"]]
+    monkey_dataset = pd.concat([monkey_dataset1, monkey_dataset2], ignore_index=True)
+    monkey_dataset = monkey_dataset.drop_duplicates(subset="question", keep=False)
+        
+    # choose = "8"
+    # monkey_model_name = "Llama-3-8B-Instruct" if choose=="8" else "Llama-3-70B-Instruct"
     # monkey_scenario = "GSM8K"
-    # helm_filename = "classic_gsm_results" 
-    # helm_model_name = 'eleutherai/pythia-6.9b' # 'eleutherai/pythia-12b-v0'
+    # helm_filename = "lite_gsm_results"
+    # helm_model_name = "meta/llama-3-8b" if choose=="8" else "meta/llama-3-70b"
+    # monkey_dataset = pd.read_json(f"hf://datasets/ScalingIntelligence/monkey_business/{monkey_scenario}_{monkey_model_name}.json")
+    
+    # choose = "6.9"
+    # monkey_model_name = "Pythia_6.9B" if choose=="6.9" else "Pythia_12B"
+    # monkey_scenario = "GSM8K"
+    # helm_filename = "results_with_z_classic_gsm" # "classic_gsm_results"
+    # helm_model_name = 'eleutherai/pythia-6.9b' if choose=="6.9" else 'eleutherai/pythia-12b-v0'
     # monkey_dataset = pd.read_json(f"data/rylan_monkey/{monkey_scenario}_{monkey_model_name}.json")
     
-    device = "cuda:1"
+    device = "cuda:0"
     output_dir = f"result/monkey_generalize/{monkey_model_name}_{monkey_scenario}"
     os.makedirs(output_dir, exist_ok=True)
     
@@ -231,8 +245,7 @@ if __name__ == "__main__":
     ### 2. distributional estimator
     train_pass_datks_est2 = []
     for k in k_arange:
-        train_pass_datk_est2 = 1 - (-np.log(1- (1 - train_pass_iat1s) ** k)).mean()
-        # pass_datk_est2 = 1 - ((1 - pass_iat1s) ** k).mean()
+        train_pass_datk_est2 = cal_passdatk(train_pass_iat1s, k)
         train_pass_datks_est2.append(train_pass_datk_est2)
     train_neglog_est_2 = -np.log(np.array(train_pass_datks_est2))
     
@@ -252,11 +265,10 @@ if __name__ == "__main__":
         return loss
     theta = trainer([theta], optim_theta, closure_theta)[0].detach()
     print(f"theta: {theta.item()}")
-    breakpoint()
     train_probs = torch.sigmoid(theta + train_zs).cpu().numpy() # shape: (n_questions,)
     train_pass_datks_est3 = []
     for k in k_arange:
-        train_pass_datk_est3 = 1 - (-np.log(1- (1 - train_probs) ** k)).mean()
+        train_pass_datk_est3 = cal_passdatk(train_probs, k)
         train_pass_datks_est3.append(train_pass_datk_est3)
     train_neglog_est_3 = -np.log(np.array(train_pass_datks_est3))
     
@@ -264,7 +276,7 @@ if __name__ == "__main__":
     test_probs = torch.sigmoid(theta + test_zs).cpu().numpy() # shape: (n_questions,)
     test_pass_datks_est3 = []
     for k in k_arange:
-        test_pass_datk_est3 = 1 - (-np.log(1- (1 - test_probs) ** k)).mean()
+        test_pass_datk_est3 =cal_passdatk(test_probs, k)
         test_pass_datks_est3.append(test_pass_datk_est3)
     test_neglog_est_3 = -np.log(np.array(test_pass_datks_est3))
     
