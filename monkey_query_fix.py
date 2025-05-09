@@ -3,7 +3,7 @@ import pickle
 import pandas as pd
 import pathlib
 from huggingface_hub import snapshot_download
-
+from pyarrow.lib import ArrowInvalid
 from monkey_query_utils import (
     exact_match,
     quasi_exact_match,
@@ -66,7 +66,12 @@ for scenario_dir in sorted(base_eval_dir.iterdir()):
             dst_path = output_root / rel
             dst_path.parent.mkdir(parents=True, exist_ok=True)
 
-            df = pd.read_parquet(src_path)
+            try:
+                df = pd.read_parquet(src_path)
+            except ArrowInvalid as e:
+                print(f"Skipping `{src_path.parent.name}` due to read error: {e}")
+                continue
+            
             # Keep only the text before the first newline
             df['response'] = df['response'].str.split("\n", n=1).str[0]
             # Recompute the score based on the original solution
