@@ -73,10 +73,12 @@ if __name__ == "__main__":
     helm_resmat_full = helm_resmat_full.loc[:, keep_cols]
     
     monkey_model_name = "Meta-Llama-3-8B-Instruct"
+    # monkey_model_name = "pythia-12b"
+    # monkey_model_name = "pythia-6.9b"
     benchmark_scenarios = {
-        # "lite": ["commonsense", "math", "med_qa", "legalbench"],
+        "lite": ["commonsense", "math", "med_qa", "legalbench"],
         # "mmlu": ["mmlu"],
-        "classic": ["bbq"] # "lsat_qa", "legal_support"
+        # "classic": ["bbq"] # "lsat_qa", "legal_support"
     }
 
     for benchmark_name, scenario_list in benchmark_scenarios.items():
@@ -115,6 +117,19 @@ if __name__ == "__main__":
             data = torch.tensor(helm_resmat.values, dtype=torch.float64, device=device)
             added_data = np.array(list(monkey_questions2iscorrects.values()))
             added_data = torch.from_numpy(added_data).to(device=device).double().T
+            
+            # data_means      = data.mean(1).cpu().numpy()
+            # added_data_means = added_data.mean(1).cpu().numpy()
+            # plt.figure(figsize=(6,4))
+            # plt.hist(data_means,       bins=50, alpha=0.6, label='Helm',    color='C0')
+            # plt.hist(added_data_means, bins=50, alpha=0.6, label=f'Monkey', color='C1')
+            # plt.xlabel('Mean correct-probability')
+            # plt.ylabel('Count')
+            # plt.title(f'Distribution of per-question means ({scenario_name})')
+            # plt.legend()
+            # plt.tight_layout()
+            # plt.savefig(f"{output_dir}/ctt_mean_distri_{monkey_model_name}_{scenario_name}.png", dpi=300)
+
             data = torch.cat([data, added_data], dim=0)
             n_test_takers, n_items = data.shape
             print(f"data.shape: {data.shape}")
@@ -295,7 +310,7 @@ if __name__ == "__main__":
                 ax.loglog(k_arange, train_neglog_est_3,
                         linestyle='--',
                         label=f'Rasch (MSE={mse_train_rasch:.2e})')
-                ax.set_xlabel(r'$\log k$', fontsize=20)
+                ax.set_xlabel(r'$k$', fontsize=20)
                 ax.set_ylabel(r'$-\log\bigl(\mathrm{pass}_{\mathcal{D}}@k\bigr)$', fontsize=20)
                 ax.tick_params(axis="both", labelsize=14)
                 ax.legend(fontsize=14)
@@ -317,7 +332,7 @@ if __name__ == "__main__":
                 ax.loglog(k_arange, test_neglog_est_3,
                         linestyle='--',
                         label=f'Rasch (MSE={mse_test_rasch:.2e})')
-                ax.set_xlabel(r'$\log k$', fontsize=20)
+                ax.set_xlabel(r'$k$', fontsize=20)
                 ax.set_ylabel(r'$-\log\bigl(\mathrm{pass}_{\mathcal{D}}@k\bigr)$', fontsize=20)
                 ax.tick_params(axis="both", labelsize=14)
                 ax.legend(fontsize=14)

@@ -1,0 +1,78 @@
+from tqdm import tqdm
+import pickle
+import pandas as pd
+import pathlib
+from huggingface_hub import snapshot_download
+
+from monkey_query_utils import (
+    exact_match,
+    quasi_exact_match,
+)
+
+model_nickname2helm_model_name = {
+    "Meta-Llama-3-8B-Instruct": "meta/llama-3-8b",
+    "pythia-6.9b": "eleutherai/pythia-6.9b",
+    "pythia-12b": "eleutherai/pythia-6.9b", # 12b and 6.9b have same context length
+}
+
+# Base directories
+base_eval_dir = pathlib.Path("data/monkey_query/eval_results")
+base_fix_dir = pathlib.Path("data/monkey_query/eval_results_fix")
+
+# Download pre-query dataset once for all scenarios
+cache_dir = snapshot_download(
+    repo_id="stair-lab/monkey_query_pre",
+    repo_type="dataset",
+)
+
+# Load mapping from prompt_idx → solution for each scenario
+# We’ll do this once per scenario (before iterating models)
+# Loop over scenarios and models
+for scenario_dir in sorted(base_eval_dir.iterdir()):
+    if not scenario_dir.is_dir():
+        continue
+    scenario_name = scenario_dir.name
+    if "scenario_name" == "math":
+        continue
+
+    if scenario_name in ["mmlu", "commonsense"]:
+        evaluate_fn = exact_match
+    elif scenario_name in ["med_qa", "legalbench", "bbq", "lsat_qa", "legal_support"]:
+        evaluate_fn = quasi_exact_match
+    else:
+        print(f"Skipping unknown dataset: {scenario_name}")
+        continue
+
+    # Iterate over each model directory
+    for model_dir in sorted(scenario_dir.iterdir()):
+        if not model_dir.is_dir():
+            continue
+        model_name = model_dir.name
+        print(f"\nGathering results for {scenario_name}/{model_name}...")
+        
+        # Load the pre-query DataFrame for this scenario
+        helm_model = model_nickname2helm_model_name[model_name]
+        prequery_path = pathlib.Path(cache_dir) / f"{helm_model.replace('/', '_')}_{scenario_name}_pre_query.pkl"
+        with open(prequery_path, 'rb') as f:
+            pre_df = pickle.load(f)
+        sol_map = dict(zip(pre_df['prompt_index'], pre_df['solution']))
+
+        input_root = model_dir
+        output_root = base_fix_dir / scenario_name / model_name
+
+        # Process each batch file
+        for src_path in tqdm(sorted(input_root.rglob("batch_*.parquet"))):
+            rel = src_path.relative_to(input_root)
+            dst_path = output_root / rel
+            dst_path.parent.mkdir(parents=True, exist_ok=True)
+
+            df = pd.read_parquet(src_path)
+            # Keep only the text before the first newline
+            df['response'] = df['response'].str.split("\n", n=1).str[0]
+            # Recompute the score based on the original solution
+            df['score'] = df.apply(
+                lambda row: float(evaluate_fn(row['response'], sol_map[row['prompt_idx']])),
+                axis=1,
+            )
+
+            df.to_parquet(dst_path, index=False)
