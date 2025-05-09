@@ -63,6 +63,7 @@ def gather_to_json(
             continue
 
     # write out JSON
+    print(len(records))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as f:
         json.dump(records, f, ensure_ascii=False)
@@ -83,7 +84,9 @@ if __name__ == "__main__":
         "--base_eval_dir",
         required=True,
         type=str,
-    )
+    ) 
+    # "/lfs/skampere1/0/sttruong/deval/data/monkey_query/eval_results"
+    # "/lfs/skampere2/0/sttruong/irsl/data/monkey_query/eval_results"
     args = parser.parse_args()
     base_eval_dir = pathlib.Path(args.base_eval_dir)
     output_root = pathlib.Path("data/monkey_query/gather_results")
@@ -92,6 +95,7 @@ if __name__ == "__main__":
         if not scenario_dir.is_dir():
             continue
         scenario_name = scenario_dir.name
+        print(f"\n{scenario_name}")
 
         for model_dir in sorted(scenario_dir.iterdir()):
             if not model_dir.is_dir():
