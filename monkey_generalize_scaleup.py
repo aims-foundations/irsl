@@ -13,6 +13,9 @@ torch.manual_seed(42)
 from scipy.optimize import curve_fit
 import os
 from sklearn.metrics import mean_squared_error
+from scipy.stats import pearsonr
+from sklearn.kernel_ridge import KernelRidge
+from pathlib import Path
 
 probs_holder = {'current': None}
 
@@ -66,280 +69,403 @@ def linear_func(z, w, b):
     return w * z + b
 
 if __name__ == "__main__":
-    device = "cuda:7"
-    with open(f"/lfs/skampere1/0/sttruong/deval/data/gather_helm_data/results_with_z.pkl", "rb") as f:
-        helm_resmat_full = pickle.load(f)
-    keep_cols = ~helm_resmat_full.columns.get_level_values("z").isna()
-    helm_resmat_full = helm_resmat_full.loc[:, keep_cols]
+    device = "cuda:1"
+    # method = "diff_split"
+    method = "55randomsplit"
     
-    monkey_model_name = "Meta-Llama-3-8B-Instruct"
-    # monkey_model_name = "pythia-12b"
-    # monkey_model_name = "pythia-6.9b"
+    # we query
+    monkey_model_names = ["Meta-Llama-3-8B-Instruct", "pythia-12b", "pythia-6.9b"]
     benchmark_scenarios = {
-        "lite": ["commonsense", "math", "med_qa", "legalbench"],
-        # "mmlu": ["mmlu"],
-        # "classic": ["bbq"] # "lsat_qa", "legal_support"
+        "lite": ["legalbench", "math", "commonsense", "med_qa"],
+        "mmlu": ["mmlu"],
+        "classic": ["bbq", "lsat_qa"] # , "legal_support"
+    }
+    we_query_list = [
+        f"hf://datasets/stair-lab/monkey_queries/{monkey_model_name}_{scenario_name}.json"
+        for monkey_model_name in monkey_model_names
+        for scenario_list in benchmark_scenarios.values()
+        for scenario_name in scenario_list
+    ]
+    
+    # harmbench
+    harmbench_model_names = [
+        "GraySwanAI-Llama-3-8B-Instruct-RR",
+        "claude-3-5-sonnet-20240620",
+        "cygnet",
+        "gpt-4o-mini",
+        "gemini-1.5-pro-001",
+        "gemini-1.5-flash-001",
+        "meta-llama-Meta-Llama-3-8B-Instruct",
+        "gpt-4o",
+        "claude-3-opus-20240229",
+    ]
+    harmbench_list = [
+        f"hf://datasets/stair-lab/monkey_queries/{harmbench_model_name}_harm_bench.json"
+        for harmbench_model_name in harmbench_model_names
+    ]
+    
+    scenario_to_benchmark = {
+        **{
+            scenario: benchmark_name
+            for benchmark_name, scenario_list in benchmark_scenarios.items()
+            for scenario in scenario_list
+        },
+        'harm_bench': 'safety',
     }
 
-    for benchmark_name, scenario_list in benchmark_scenarios.items():
-        for scenario_name in scenario_list:
-            print(f"\n{scenario_name}")
-            monkey_dataset = pd.read_json(f"hf://datasets/stair-lab/monkey_queries/{monkey_model_name}_{scenario_name}.json")
-            
-            output_dir = f"result/monkey_generalize_scaleup"
-            os.makedirs(output_dir, exist_ok=True)
-            
-            monkey_questions2iscorrects = {row["question"]: row["is_corrects"] for _, row in monkey_dataset.iterrows()}
-            print(f"len(monkey_questions2iscorrects): {len(monkey_questions2iscorrects)}")
-            lengths = [len(l) for l in monkey_questions2iscorrects.values()]
-            print(f"set(lengths): {set(lengths)}")
-            
-            helm_resmat = helm_resmat_full.loc[:, helm_resmat_full.columns.get_level_values("benchmark") == benchmark_name]
-            helm_resmat = helm_resmat.loc[:, helm_resmat.columns.get_level_values("scenario") == scenario_name]
-            helm_resmat = helm_resmat[~helm_resmat.isna().all(axis=1)]
-            print(f"helm_resmat.shape: {helm_resmat.shape}")
-            helm_questions = list(helm_resmat.columns.get_level_values("input.text"))
+    for path in harmbench_list:
+        stem = Path(path).stem # e.g. "pythia-12b_lsat_qa"
+        monkey_model_name, scenario_name = stem.split("_", 1)
+        benchmark_name = scenario_to_benchmark.get(scenario_name)
+        print(f"model={monkey_model_name}, scenario={scenario_name}, benchmark={benchmark_name}")
+        monkey_dataset = pd.read_json(path)
+        # monkey_dataset = pd.read_json(f"hf://datasets/stair-lab/monkey_queries/{monkey_model_name}_{scenario_name}.json")
+        
+        pkl_name = "results_with_z" if benchmark_name != "safety" else "results_with_z_harmbench"
+        with open(f"/lfs/skampere1/0/sttruong/deval/data/gather_helm_data/{pkl_name}.pkl", "rb") as f:
+            helm_resmat_full = pickle.load(f)
+        keep_cols = ~helm_resmat_full.columns.get_level_values("z").isna()
+        helm_resmat_full = helm_resmat_full.loc[:, keep_cols]
+        
+        output_dir = f"result/monkey_generalize_scaleup_{method}"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        monkey_questions2iscorrects = {row["question"]: row["is_corrects"] for _, row in monkey_dataset.iterrows()}
+        print(f"len(monkey_questions2iscorrects): {len(monkey_questions2iscorrects)}")
+        lengths = [len(l) for l in monkey_questions2iscorrects.values()]
+        print(f"set(lengths): {set(lengths)}")
+        
+        helm_resmat = helm_resmat_full.loc[:, helm_resmat_full.columns.get_level_values("benchmark") == benchmark_name]
+        helm_resmat = helm_resmat.loc[:, helm_resmat.columns.get_level_values("scenario") == scenario_name]
+        helm_resmat = helm_resmat[~helm_resmat.isna().all(axis=1)]
+        print(f"helm_resmat.shape: {helm_resmat.shape}")
+        helm_questions = list(helm_resmat.columns.get_level_values("input.text"))
 
-            helm_question_set = set(helm_questions)
-            monkey_question_set = set(monkey_questions2iscorrects.keys())
-            intersect_questions = sorted(helm_question_set & monkey_question_set)
-            print(f"interset: {len(intersect_questions)}")
-            filtered_columns = [
-                col for q in intersect_questions
-                for col in helm_resmat.columns
-                if col[helm_resmat.columns.names.index("input.text")] == q
-            ]
-            helm_resmat = helm_resmat.loc[:, filtered_columns]
-            monkey_questions2iscorrects = {q: monkey_questions2iscorrects[q] for q in intersect_questions}
-            
-            helm_zs = torch.tensor(helm_resmat.columns.get_level_values("z").astype(float), dtype=torch.float, device=device)
-            
-            data = torch.tensor(helm_resmat.values, dtype=torch.float64, device=device)
-            added_data = np.array(list(monkey_questions2iscorrects.values()))
-            added_data = torch.from_numpy(added_data).to(device=device).double().T
-            
-            # data_means      = data.mean(1).cpu().numpy()
-            # added_data_means = added_data.mean(1).cpu().numpy()
-            # plt.figure(figsize=(6,4))
-            # plt.hist(data_means,       bins=50, alpha=0.6, label='Helm',    color='C0')
-            # plt.hist(added_data_means, bins=50, alpha=0.6, label=f'Monkey', color='C1')
-            # plt.xlabel('Mean correct-probability')
-            # plt.ylabel('Count')
-            # plt.title(f'Distribution of per-question means ({scenario_name})')
-            # plt.legend()
-            # plt.tight_layout()
-            # plt.savefig(f"{output_dir}/ctt_mean_distri_{monkey_model_name}_{scenario_name}.png", dpi=300)
-
-            data = torch.cat([data, added_data], dim=0)
-            n_test_takers, n_items = data.shape
-            print(f"data.shape: {data.shape}")
-            B = 50000
-            n_thetas_nuisance = 150
-            optimized_z = []
-            thetas_nuisance = torch.randn(n_thetas_nuisance, n_test_takers, device=device, dtype=torch.float64)
-            for i in tqdm(range(0, n_items, B)):
-                data_batch = data[:, i:i+B]
-                current_B = data_batch.shape[1]
-                z = torch.randn(current_B, requires_grad=True, device=device, dtype=torch.float64)
-                optim_z = LBFGS([z], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
-                def closure_z():
-                    optim_z.zero_grad()
-                    mask = ~torch.isnan(data_batch).expand(n_thetas_nuisance, -1, -1)
-                    probs = torch.sigmoid(thetas_nuisance[:, :, None] + z[None, None, :])
-                    loss = -(Bernoulli(probs=probs[mask]).log_prob(
-                        data_batch.expand(n_thetas_nuisance, -1, -1)[mask]
-                    )).mean()
-                    loss.backward()
-                    probs_holder['current'] = probs.detach()
-                    return loss
-                z_optimized = trainer([z], optim_z, closure_z)[0].detach()
-                optimized_z.append(z_optimized)
-            zs = torch.cat(optimized_z)
-
-            # split = n_items // 2
-            # sorted_desc = torch.argsort(zs, descending=True)
-            # train_idxs = sorted_desc[:split].tolist()
-            # test_idxs  = sorted_desc[split:].tolist()
-
-            indices = torch.randperm(n_items)
-            split = int(0.8 * n_items)
-            train_idxs = indices[:split].tolist()
-            test_idxs  = indices[split:].tolist()
-
-            train_questions = [intersect_questions[i] for i in train_idxs]
-            test_questions  = [intersect_questions[i] for i in test_idxs]
-            train_filtered_columns = [
-                col for q in train_questions
-                for col in helm_resmat.columns
-                if col[helm_resmat.columns.names.index("input.text")] == q
-            ]
-            train_helm_resmat = helm_resmat.loc[:, train_filtered_columns]
-            test_filtered_columns = [
-                col for q in test_questions
-                for col in helm_resmat.columns
-                if col[helm_resmat.columns.names.index("input.text")] == q
-            ]
-            test_helm_resmat = helm_resmat.loc[:, test_filtered_columns]
-            train_monkey_questions2iscorrects = {q: monkey_questions2iscorrects[q] for q in train_questions}
-            test_monkey_questions2iscorrects = {q: monkey_questions2iscorrects[q] for q in test_questions}
-            
-            train_zs = zs[train_idxs]
-            test_zs_true = zs[test_idxs]
-            helm_train_zs = helm_zs[train_idxs]
-            helm_test_zs = helm_zs[test_idxs]
-            params, _ = curve_fit(linear_func, helm_train_zs.cpu().numpy(), train_zs.cpu().numpy())
-            w, b = params
-            test_zs = linear_func(helm_test_zs.cpu().numpy(), w, b)
-            
-            plt.figure()
-            plt.scatter(helm_train_zs.cpu().numpy(), train_zs.cpu().numpy(), marker='o', label='Train data')
-            x_line = np.linspace(helm_train_zs.cpu().numpy().min(), helm_train_zs.cpu().numpy().max(), 100)
-            y_line = w * x_line + b
-            plt.plot(x_line, y_line, linestyle='-', label='Fitted line')
-            plt.scatter(helm_test_zs.cpu().numpy(), test_zs_true.cpu().numpy(), marker='x', label='Test true')
-            plt.scatter(helm_test_zs.cpu().numpy(), test_zs, marker='^', label='Test predicted')
-            plt.xlabel('helm_zs')
-            plt.ylabel('monkey_zs')
-            plt.legend()
-            plt.tight_layout()
-            plt.savefig(f"{output_dir}/helm_zs_vs_monkey_zs_{monkey_model_name}_{scenario_name}.png", dpi=300)
-            
-            train_pass_iat1s = np.array([sum(iscorrects)/len(iscorrects) for iscorrects in train_monkey_questions2iscorrects.values()])
-            train_pass_iatk_matrix = np.stack([
-                np.array([
-                    estimate_success_rate_at_k_per_problem(
-                        len(iscorrects),
-                        sum(iscorrects),
-                        k
-                    ) for k in range(1, len(iscorrects) + 1)
-                ])
-                for iscorrects in tqdm(train_monkey_questions2iscorrects.values())
-            ])  # shape: (n_questions, k)
-            _, k = train_pass_iatk_matrix.shape
-            print(f"train_pass_iatk_matrix.shape: {train_pass_iatk_matrix.shape}")
-            k_arange = np.arange(1, k + 1)
-            
-            test_pass_iatk_matrix = np.stack([
-                np.array([
-                    estimate_success_rate_at_k_per_problem(
-                        len(iscorrects),
-                        sum(iscorrects),
-                        k
-                    ) for k in range(1, len(iscorrects) + 1)
-                ])
-                for iscorrects in tqdm(test_monkey_questions2iscorrects.values())
-            ])  # shape: (n_questions, k)
-            
-            ### 1. least square estimator
-            train_pass_datks = train_pass_iatk_matrix.mean(0) # shape: (k,)
-            train_neglog_gts = -np.log(train_pass_datks)
-            popt, _ = curve_fit(power_law_func, k_arange, train_neglog_gts)
-            a_est, b_est = popt
-            train_neglog_est_1 = power_law_func(k_arange, a_est, b_est) # shape: (k,)
-            
-            test_pass_datks = test_pass_iatk_matrix.mean(0) # shape: (k,)
-            test_neglog_gts = -np.log(test_pass_datks)
-            
-            ### 2. distributional estimator
-            train_pass_datks_est2 = []
-            for k in k_arange:
-                train_pass_datk_est2 = cal_passdatk(train_pass_iat1s, k)
-                train_pass_datks_est2.append(train_pass_datk_est2)
-            train_neglog_est_2 = -np.log(np.array(train_pass_datks_est2))
-            
-            ### 3. distributional estimator with IRT
-            train_data_specific_model = data[-1][train_idxs]
-            theta = torch.randn((1,), requires_grad=True, device=device, dtype=torch.float64)
-            optim_theta = LBFGS([theta], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
-            def closure_theta():
-                optim_theta.zero_grad()
-                mask = ~torch.isnan(train_data_specific_model)
-                probs = torch.sigmoid(theta + train_zs)
-                loss = -(Bernoulli(probs=probs[mask]).log_prob(train_data_specific_model[mask])).mean()
+        helm_question_set = set(helm_questions)
+        monkey_question_set = set(monkey_questions2iscorrects.keys())
+        intersect_questions = sorted(helm_question_set & monkey_question_set)
+        print(f"interset: {len(intersect_questions)}")
+        filtered_columns = [
+            col for q in intersect_questions
+            for col in helm_resmat.columns
+            if col[helm_resmat.columns.names.index("input.text")] == q
+        ]
+        helm_resmat = helm_resmat.loc[:, filtered_columns]
+        monkey_questions2iscorrects = {q: monkey_questions2iscorrects[q] for q in intersect_questions}
+        
+        helm_zs = torch.tensor(helm_resmat.columns.get_level_values("z").astype(float), dtype=torch.float, device=device)
+        
+        data = torch.tensor(helm_resmat.values, dtype=torch.float64, device=device)
+        # added_data = np.array(list(monkey_questions2iscorrects.values()))
+        added_lists = list(monkey_questions2iscorrects.values())
+        max_len = max(len(l) for l in added_lists)
+        padded = [
+            l + [np.nan] * (max_len - len(l))
+            for l in added_lists
+        ]
+        added_data = np.array(padded, dtype=float)
+        added_data = torch.from_numpy(added_data).to(device=device).double().T
+        order = torch.argsort(added_data.mean(dim=1))
+        idx_middle = order[order.shape[0] // 2]
+        specific_model_idx = idx_middle + data.shape[0]
+        data = torch.cat([data, added_data], dim=0)
+        
+        n_test_takers, n_items = data.shape
+        print(f"data.shape: {data.shape}")
+        B = 50000
+        n_thetas_nuisance = 150
+        optimized_z = []
+        thetas_nuisance = torch.randn(n_thetas_nuisance, n_test_takers, device=device, dtype=torch.float64)
+        for i in tqdm(range(0, n_items, B)):
+            data_batch = data[:, i:i+B]
+            current_B = data_batch.shape[1]
+            z = torch.randn(current_B, requires_grad=True, device=device, dtype=torch.float64)
+            optim_z = LBFGS([z], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
+            def closure_z():
+                optim_z.zero_grad()
+                mask = ~torch.isnan(data_batch).expand(n_thetas_nuisance, -1, -1)
+                probs = torch.sigmoid(thetas_nuisance[:, :, None] + z[None, None, :])
+                loss = -(Bernoulli(probs=probs[mask]).log_prob(
+                    data_batch.expand(n_thetas_nuisance, -1, -1)[mask]
+                )).mean()
                 loss.backward()
                 probs_holder['current'] = probs.detach()
                 return loss
-            theta = trainer([theta], optim_theta, closure_theta)[0].detach()
-            print(f"theta: {theta.item()}")
-            train_probs = torch.sigmoid(theta + train_zs).cpu().numpy() # shape: (n_questions,)
-            train_pass_datks_est3 = []
-            for k in k_arange:
-                train_pass_datk_est3 = cal_passdatk(train_probs, k)
-                train_pass_datks_est3.append(train_pass_datk_est3)
-            train_neglog_est_3 = -np.log(np.array(train_pass_datks_est3))
+            z_optimized = trainer([z], optim_z, closure_z)[0].detach()
+            optimized_z.append(z_optimized)
+        zs = torch.cat(optimized_z)
+
+        if method == "diff_split":
+            split = n_items // 2
+            sorted_desc = torch.argsort(helm_zs, descending=True)
+            train_idxs = sorted_desc[:split].tolist()
+            test_idxs  = sorted_desc[split:].tolist()
+
+        elif method == "55randomsplit":
+            indices = torch.randperm(n_items)
+            split = int(0.5 * n_items)
+            train_idxs = indices[:split].tolist()
+            test_idxs  = indices[split:].tolist()
+
+        train_questions = [intersect_questions[i] for i in train_idxs]
+        test_questions  = [intersect_questions[i] for i in test_idxs]
+        train_filtered_columns = [
+            col for q in train_questions
+            for col in helm_resmat.columns
+            if col[helm_resmat.columns.names.index("input.text")] == q
+        ]
+        train_helm_resmat = helm_resmat.loc[:, train_filtered_columns]
+        test_filtered_columns = [
+            col for q in test_questions
+            for col in helm_resmat.columns
+            if col[helm_resmat.columns.names.index("input.text")] == q
+        ]
+        test_helm_resmat = helm_resmat.loc[:, test_filtered_columns]
+        train_monkey_questions2iscorrects = {q: monkey_questions2iscorrects[q] for q in train_questions}
+        test_monkey_questions2iscorrects = {q: monkey_questions2iscorrects[q] for q in test_questions}
+        
+        train_zs = zs[train_idxs]
+        test_zs_true = zs[test_idxs]
+        helm_train_zs = helm_zs[train_idxs]
+        helm_test_zs = helm_zs[test_idxs]
+        
+        # params, _ = curve_fit(linear_func, helm_train_zs.cpu().numpy(), train_zs.cpu().numpy())
+        # w, b = params
+        # test_zs = linear_func(helm_test_zs.cpu().numpy(), w, b)
+        
+        X_train = helm_train_zs.cpu().numpy().reshape(-1, 1)
+        y_train = train_zs.cpu().numpy()
+        X_test  = helm_test_zs.cpu().numpy().reshape(-1, 1)
+        kr = KernelRidge(alpha=1.0, kernel='rbf', gamma=0.1)
+        kr.fit(X_train, y_train)
+        test_zs = kr.predict(X_test)
+        
+        plt.figure()
+        plt.scatter(helm_train_zs.cpu().numpy(), train_zs.cpu().numpy(), marker='o', label='Train data')
+        x_line = np.linspace(helm_train_zs.cpu().numpy().min(), helm_train_zs.cpu().numpy().max(), 100)
+        # y_line = w * x_line + b
+        x_line = x_line.reshape(-1, 1)
+        y_line = kr.predict(x_line)
+        plt.plot(x_line, y_line, linestyle='-', label='Fitted line')
+        plt.scatter(helm_test_zs.cpu().numpy(), test_zs_true.cpu().numpy(), marker='x', label='Test true')
+        plt.scatter(helm_test_zs.cpu().numpy(), test_zs, marker='^', label='Test predicted')
+        plt.xlabel('helm_zs')
+        plt.ylabel('monkey_zs')
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(f"{output_dir}/helm_zs_vs_monkey_zs_{monkey_model_name}_{scenario_name}.png", dpi=300)
+        
+        train_pass_iat1s = np.array([sum(iscorrects)/len(iscorrects) for iscorrects in train_monkey_questions2iscorrects.values()])
+        max_len_train = max(len(iscorrects) for iscorrects in train_monkey_questions2iscorrects.values())
+        train_pass_iatk_matrix = np.stack([
+            np.pad(
+                np.array([
+                    estimate_success_rate_at_k_per_problem(
+                        len(iscorrects),
+                        sum(iscorrects),
+                        k
+                    )
+                    for k in range(1, len(iscorrects) + 1)
+                ]),
+                # pad on the right with edge values (i.e. repeat the last element)
+                (0, max_len_train - len(iscorrects)),
+                mode='edge'
+            )
+            for iscorrects in tqdm(train_monkey_questions2iscorrects.values())
+        ]) # shape: (n_questions, k)
+        _, k = train_pass_iatk_matrix.shape
+        print(f"train_pass_iatk_matrix.shape: {train_pass_iatk_matrix.shape}")
+        k_arange = np.arange(1, k + 1)
+        
+        max_len_test = max(len(iscorrects) for iscorrects in test_monkey_questions2iscorrects.values())
+        test_pass_iatk_matrix = np.stack([
+            np.pad(
+                np.array([
+                    estimate_success_rate_at_k_per_problem(
+                        len(iscorrects),
+                        sum(iscorrects),
+                        k
+                    )
+                    for k in range(1, len(iscorrects) + 1)
+                ]),
+                # pad on the right with edge values (i.e. repeat the last element)
+                (0, max_len_test - len(iscorrects)),
+                mode='edge'
+            )
+            for iscorrects in tqdm(test_monkey_questions2iscorrects.values())
+        ]) # shape: (n_questions, k)
+        
+        ### 1. least square estimator
+        train_pass_datks = train_pass_iatk_matrix.mean(0) # shape: (k,)
+        train_neglog_gts = -np.log(train_pass_datks)
+        popt, _ = curve_fit(power_law_func, k_arange, train_neglog_gts)
+        a_est, b_est = popt
+        train_neglog_est_1 = power_law_func(k_arange, a_est, b_est) # shape: (k,)
+        
+        test_pass_datks = test_pass_iatk_matrix.mean(0) # shape: (k,)
+        test_neglog_gts = -np.log(test_pass_datks)
+        
+        ### 2. distributional estimator
+        train_pass_datks_est2 = []
+        for k in k_arange:
+            train_pass_datk_est2 = cal_passdatk(train_pass_iat1s, k)
+            train_pass_datks_est2.append(train_pass_datk_est2)
+        train_neglog_est_2 = -np.log(np.array(train_pass_datks_est2))
+        
+        ### 3. distributional estimator with IRT
+        train_data_specific_model = data[specific_model_idx][train_idxs]
+        theta = torch.randn((1,), requires_grad=True, device=device, dtype=torch.float64)
+        optim_theta = LBFGS([theta], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
+        def closure_theta():
+            optim_theta.zero_grad()
+            mask = ~torch.isnan(train_data_specific_model)
+            probs = torch.sigmoid(theta + train_zs)
+            loss = -(Bernoulli(probs=probs[mask]).log_prob(train_data_specific_model[mask])).mean()
+            loss.backward()
+            probs_holder['current'] = probs.detach()
+            return loss
+        theta = trainer([theta], optim_theta, closure_theta)[0].detach()
+        print(f"theta: {theta.item()}")
+        train_probs = torch.sigmoid(theta + train_zs).cpu().numpy() # shape: (n_questions,)
+        train_pass_datks_est3 = []
+        for k in k_arange:
+            train_pass_datk_est3 = cal_passdatk(train_probs, k)
+            train_pass_datks_est3.append(train_pass_datk_est3)
+        train_neglog_est_3 = -np.log(np.array(train_pass_datks_est3))
+        
+        test_zs = torch.tensor(test_zs, dtype=torch.float64, device=device)
+        test_probs = torch.sigmoid(theta + test_zs).cpu().numpy() # shape: (n_questions,)
+        test_pass_datks_est3 = []
+        for k in k_arange:
+            test_pass_datk_est3 =cal_passdatk(test_probs, k)
+            test_pass_datks_est3.append(test_pass_datk_est3)
+        test_neglog_est_3 = -np.log(np.array(test_pass_datks_est3))
+        
+        corr = pearsonr(torch.sigmoid(theta + train_zs).cpu().numpy(), train_pass_iat1s).statistic
+        with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
+            plt.figure(figsize=(6,6))
+            plt.scatter(torch.sigmoid(theta + train_zs).cpu().numpy(), train_pass_iat1s)
+            plt.xlabel("sigmoid(theta+z)", fontsize=20)
+            plt.ylabel("Success Rate", fontsize=20)
+            plt.title(r'Pearson Correlation: {:.2f}'.format(corr), fontsize=22)
+            plt.tick_params(axis="both", labelsize=14)
+            plt.plot([0, 1], [0, 1]) 
+            plt.xlim(0, 1)
+            plt.ylim(0, 1)  
+            plt.savefig(f"{output_dir}/prob_corr_{monkey_model_name}_{scenario_name}.png", dpi=300)
+
+        results_dict = {
+            "train_neglog_gts": train_neglog_gts,
+            "test_neglog_gts": test_neglog_gts,
+            "train_neglog_est_1": train_neglog_est_1,
+            "train_neglog_est_2": train_neglog_est_2,
+            "train_neglog_est_3": train_neglog_est_3,
+            "test_neglog_est_3": test_neglog_est_3,
+        }
+        
+        mse_train_ls    = mean_squared_error(train_neglog_gts, train_neglog_est_1)
+        mse_train_dist  = mean_squared_error(train_neglog_gts, train_neglog_est_2)
+        mse_train_rasch = mean_squared_error(train_neglog_gts, train_neglog_est_3)
+        mse_test_ls     = mean_squared_error(test_neglog_gts, train_neglog_est_1)
+        mse_test_dist   = mean_squared_error(test_neglog_gts, train_neglog_est_2)
+        mse_test_rasch  = mean_squared_error(test_neglog_gts, test_neglog_est_3)
+        with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
+            fig, axes = plt.subplots(1, 2, figsize=(12, 6))
             
-            test_zs = torch.tensor(test_zs, dtype=torch.float64, device=device)
-            test_probs = torch.sigmoid(theta + test_zs).cpu().numpy() # shape: (n_questions,)
-            test_pass_datks_est3 = []
-            for k in k_arange:
-                test_pass_datk_est3 =cal_passdatk(test_probs, k)
-                test_pass_datks_est3.append(test_pass_datk_est3)
-            test_neglog_est_3 = -np.log(np.array(test_pass_datks_est3))
-            
-            results_dict = {
-                "train_neglog_gts": train_neglog_gts,
-                "test_neglog_gts": test_neglog_gts,
-                "train_neglog_est_1": train_neglog_est_1,
-                "train_neglog_est_2": train_neglog_est_2,
-                "train_neglog_est_3": train_neglog_est_3,
-                "test_neglog_est_3": test_neglog_est_3,
-            }
-            
-            mse_train_ls    = mean_squared_error(train_neglog_gts, train_neglog_est_1)
-            mse_train_dist  = mean_squared_error(train_neglog_gts, train_neglog_est_2)
-            mse_train_rasch = mean_squared_error(train_neglog_gts, train_neglog_est_3)
-            mse_test_ls     = mean_squared_error(test_neglog_gts, train_neglog_est_1)
-            mse_test_dist   = mean_squared_error(test_neglog_gts, train_neglog_est_2)
-            mse_test_rasch  = mean_squared_error(test_neglog_gts, test_neglog_est_3)
-            with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
-                fig, axes = plt.subplots(1, 2, figsize=(12, 6))
-                
-                # ————— Left subplot: training curves —————
-                ax = axes[0]
-                ax.loglog(k_arange, train_neglog_gts,
+            # ————— Left subplot: training curves —————
+            ax = axes[0]
+            ax.loglog(k_arange, train_neglog_gts,
+                    linestyle='-',
+                    color='black',
+                    linewidth=2,
+                    label='Ground truth')
+            ax.loglog(k_arange, train_neglog_est_1,
+                    linestyle='--',
+                    label=f'Least squares (MSE={mse_train_ls:.2e})')
+            ax.loglog(k_arange, train_neglog_est_2,
+                    linestyle='--',
+                    label=f'Distributional (MSE={mse_train_dist:.2e})')
+            ax.loglog(k_arange, train_neglog_est_3,
+                    linestyle='--',
+                    label=f'Rasch (MSE={mse_train_rasch:.2e})')
+            ax.set_xlabel(r'$k$', fontsize=20)
+            ax.set_ylabel(r'$-\log\bigl(\mathrm{pass}_{\mathcal{D}}@k\bigr)$', fontsize=20)
+            ax.tick_params(axis="both", labelsize=14)
+            ax.legend(fontsize=14)
+            ax.set_title('Train', fontsize=16)
+
+            # ————— Right subplot: test curves —————
+            ax = axes[1]
+            ax.loglog(k_arange, test_neglog_gts,
+                    linestyle='-',
+                    color='black',
+                    linewidth=2,
+                    label='Ground truth')
+            ax.loglog(k_arange, train_neglog_est_1,
+                    linestyle='--',
+                    label=f'Least squares (MSE={mse_test_ls:.2e})')
+            ax.loglog(k_arange, train_neglog_est_2,
+                    linestyle='--',
+                    label=f'Distributional (MSE={mse_test_dist:.2e})')
+            ax.loglog(k_arange, test_neglog_est_3,
+                    linestyle='--',
+                    label=f'Rasch (MSE={mse_test_rasch:.2e})')
+            ax.set_xlabel(r'$k$', fontsize=20)
+            ax.set_ylabel(r'$-\log\bigl(\mathrm{pass}_{\mathcal{D}}@k\bigr)$', fontsize=20)
+            ax.tick_params(axis="both", labelsize=14)
+            ax.legend(fontsize=14)
+            ax.set_title('Test', fontsize=16)
+
+            fig.tight_layout()
+            fig.savefig(f"{output_dir}/monkey_generalize_{monkey_model_name}_{scenario_name}.png", dpi=300, bbox_inches="tight")
+
+            with open(f"{output_dir}/monkey_scaleup_data_{monkey_model_name}_{scenario_name}.pkl", "wb") as f:
+                pickle.dump(results_dict, f)
+        
+        mse_train_dist  = mean_squared_error(train_pass_datks, train_pass_datks_est2)
+        mse_train_rasch = mean_squared_error(train_pass_datks, train_pass_datks_est3)
+        mse_test_dist   = mean_squared_error(test_pass_datks, train_pass_datks_est2)
+        mse_test_rasch  = mean_squared_error(test_pass_datks, test_pass_datks_est3)
+        with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
+            fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+
+            # ————— Left subplot: training curves —————
+            ax = axes[0]
+            ax.semilogx(k_arange, train_pass_datks,
                         linestyle='-',
                         color='black',
                         linewidth=2,
                         label='Ground truth')
-                ax.loglog(k_arange, train_neglog_est_1,
-                        linestyle='--',
-                        label=f'Least squares (MSE={mse_train_ls:.2e})')
-                ax.loglog(k_arange, train_neglog_est_2,
+            ax.semilogx(k_arange, np.array(train_pass_datks_est2),
                         linestyle='--',
                         label=f'Distributional (MSE={mse_train_dist:.2e})')
-                ax.loglog(k_arange, train_neglog_est_3,
+            ax.semilogx(k_arange, np.array(train_pass_datks_est3),
                         linestyle='--',
                         label=f'Rasch (MSE={mse_train_rasch:.2e})')
-                ax.set_xlabel(r'$k$', fontsize=20)
-                ax.set_ylabel(r'$-\log\bigl(\mathrm{pass}_{\mathcal{D}}@k\bigr)$', fontsize=20)
-                ax.tick_params(axis="both", labelsize=14)
-                ax.legend(fontsize=14)
-                ax.set_title('Train', fontsize=16)
+            ax.set_xlabel(r'$k$', fontsize=20)
+            ax.set_ylabel(r'$\mathrm{pass}_{\mathcal{D}}@k$', fontsize=20)
+            ax.tick_params(axis="both", labelsize=14)
+            ax.legend(fontsize=14)
+            ax.set_title('Train', fontsize=16)
 
-                # ————— Right subplot: test curves —————
-                ax = axes[1]
-                ax.loglog(k_arange, test_neglog_gts,
+            # ————— Right subplot: test curves —————
+            ax = axes[1]
+            ax.semilogx(k_arange, test_pass_datks,
                         linestyle='-',
                         color='black',
                         linewidth=2,
                         label='Ground truth')
-                ax.loglog(k_arange, train_neglog_est_1,
-                        linestyle='--',
-                        label=f'Least squares (MSE={mse_test_ls:.2e})')
-                ax.loglog(k_arange, train_neglog_est_2,
+            ax.semilogx(k_arange, np.array(train_pass_datks_est2),
                         linestyle='--',
                         label=f'Distributional (MSE={mse_test_dist:.2e})')
-                ax.loglog(k_arange, test_neglog_est_3,
+            ax.semilogx(k_arange, np.array(test_pass_datks_est3),
                         linestyle='--',
                         label=f'Rasch (MSE={mse_test_rasch:.2e})')
-                ax.set_xlabel(r'$k$', fontsize=20)
-                ax.set_ylabel(r'$-\log\bigl(\mathrm{pass}_{\mathcal{D}}@k\bigr)$', fontsize=20)
-                ax.tick_params(axis="both", labelsize=14)
-                ax.legend(fontsize=14)
-                ax.set_title('Test', fontsize=16)
+            ax.set_xlabel(r'$k$', fontsize=20)
+            ax.set_ylabel(r'$\mathrm{pass}_{\mathcal{D}}@k$', fontsize=20)
+            ax.tick_params(axis="both", labelsize=14)
+            ax.legend(fontsize=14)
+            ax.set_title('Test', fontsize=16)
 
-                fig.tight_layout()
-                fig.savefig(f"{output_dir}/monkey_generalize_{monkey_model_name}_{scenario_name}.png", dpi=300, bbox_inches="tight")
-    
-                with open(f"{output_dir}/monkey_scaleup_data_{monkey_model_name}_{scenario_name}.pkl", "wb") as f:
-                    pickle.dump(results_dict, f)
+            fig.tight_layout()
+            fig.savefig(f"{output_dir}/nonlog_{monkey_model_name}_{scenario_name}.png", dpi=300, bbox_inches="tight")

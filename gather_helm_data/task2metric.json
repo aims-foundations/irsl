@@ -55,5 +55,12 @@
     },
     "thaiexam": {
         "thai_exam": "exact_match"
+    },
+    "safety": {
+        "harm_bench": "safety_score",
+        "anthropic_red_team": "",
+        "bbq": "",
+        "simple_safety_tests": "",
+        "xstest": ""
     }
 }

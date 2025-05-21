@@ -85,8 +85,8 @@ if __name__ == "__main__":
         required=True,
         type=str,
     ) 
-    # "/lfs/skampere1/0/sttruong/deval/data/monkey_query/eval_results"
-    # "/lfs/skampere2/0/sttruong/irsl/data/monkey_query/eval_results"
+    # "/lfs/skampere1/0/sttruong/deval/data/monkey_query/eval_results_fix"
+    # "/lfs/skampere2/0/sttruong/irsl/data/monkey_query/eval_results_fix"
     args = parser.parse_args()
     base_eval_dir = pathlib.Path(args.base_eval_dir)
     output_root = pathlib.Path("data/monkey_query/gather_results")

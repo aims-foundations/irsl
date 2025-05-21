@@ -32,8 +32,6 @@ for scenario_dir in sorted(base_eval_dir.iterdir()):
     if not scenario_dir.is_dir():
         continue
     scenario_name = scenario_dir.name
-    if "scenario_name" == "math":
-        continue
 
     if scenario_name in ["mmlu", "commonsense"]:
         evaluate_fn = exact_match
@@ -72,12 +70,13 @@ for scenario_dir in sorted(base_eval_dir.iterdir()):
                 print(f"Skipping `{src_path.parent.name}` due to read error: {e}")
                 continue
             
-            # Keep only the text before the first newline
-            df['response'] = df['response'].str.split("\n", n=1).str[0]
-            # Recompute the score based on the original solution
-            df['score'] = df.apply(
-                lambda row: float(evaluate_fn(row['response'], sol_map[row['prompt_idx']])),
-                axis=1,
-            )
+            if "scenario_name" != "math":
+                # Keep only the text before the first newline
+                df['response'] = df['response'].str.split("\n", n=1).str[0]
+                # Recompute the score based on the original solution
+                df['score'] = df.apply(
+                    lambda row: float(evaluate_fn(row['response'], sol_map[row['prompt_idx']])),
+                    axis=1,
+                )
 
             df.to_parquet(dst_path, index=False)
