@@ -47,6 +47,8 @@ if __name__ == "__main__":
     # model_name = 'eleutherai/pythia-6.9b'
     # model_name = 'mistralai/mistral-7b-v0.1'
     model_name = 'deepseek-ai/DeepSeek-R1-Distill-Llama-8B'
+    model_name = 'Qwen/Qwen3-8B'
+    
     
     benchmark_scenarios = {
         # "lite": ["commonsense", "med_qa", "legalbench", "math"],
@@ -126,7 +128,8 @@ if __name__ == "__main__":
                 context_model_name = model_name
             elif model_name == 'deepseek-ai/DeepSeek-R1-Distill-Llama-8B': # 131072
                 context_model_name = "openai/gpt-4o-2024-08-06" # 128000
-            
+            elif model_name in 'Qwen/Qwen3-8B': # 40960
+                context_model_name = 'qwen/qwen1.5-7b' # 32768
             
             results = results[(results["request.model"] == context_model_name)]
             print(len(results))
