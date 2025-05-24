@@ -9,6 +9,7 @@ model_nickname2helm_model_name = {
     "meta-llama/Meta-Llama-3-8B-Instruct": "meta/llama-3-8b",
     "EleutherAI/pythia-6.9b": "eleutherai/pythia-6.9b",
     "EleutherAI/pythia-12b": "eleutherai/pythia-6.9b", # 12b and 6.9b have same context length
+    "mistralai/Mistral-7B-v0.1": "mistralai/mistral-7b-v0.1"
 }
 
 def create_prompts_and_answers(model_nickname, dataset, num_prompts_to_use):
@@ -16,7 +17,7 @@ def create_prompts_and_answers(model_nickname, dataset, num_prompts_to_use):
         repo_id="stair-lab/monkey_query_pre", 
         repo_type="dataset",
     )
-    helm_model_name = model_nickname2helm_model_name[model_nickname]
+    helm_model_name = model_nickname2helm_model_name.get(model_nickname, model_nickname)
     file_path = f"{cache_dir}/{helm_model_name.replace('/', '_')}_{dataset}_pre_query.pkl"
     with open(file_path, 'rb') as f:
         df = pickle.load(f)
@@ -64,6 +65,25 @@ def quasi_exact_match(solution: str, response: str) -> float:
     if not response:
         return 0
     return 1 if normalize_text(solution) == normalize_text(response) else 0
+
+# gsm final_number_exact_match
+def final_number_exact_match(gold: str, pred: str) -> float:
+    """
+    Returns 1 iff the final number in gold and pred match.
+    Similar to exact_match_indicator.
+    Example:
+    - gold = "The answer is 15."
+    - pred = "The answer is 15 eggs."
+    - Returns 1
+    """
+
+    def get_final_number(x: str) -> str:
+        matches = re.findall(r"-?[\d,]+(?:.\d+)?", x)
+        if not matches:
+            return ""
+        return matches[-1].replace(",", "")
+
+    return exact_match(get_final_number(gold), get_final_number(pred))
 
 ## is_equiv_chain_of_thought
 def last_boxed_only_string(string: str) -> Optional[str]:

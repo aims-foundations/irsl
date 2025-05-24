@@ -44,18 +44,21 @@ def get_solution_exact_match(row):
 
 if __name__ == "__main__":
     # model_name = "meta/llama-3-8b"
-    model_name = 'eleutherai/pythia-6.9b'
+    # model_name = 'eleutherai/pythia-6.9b'
+    # model_name = 'mistralai/mistral-7b-v0.1'
+    model_name = 'deepseek-ai/DeepSeek-R1-Distill-Llama-8B'
     
     benchmark_scenarios = {
         # "lite": ["commonsense", "med_qa", "legalbench", "math"],
+        "lite": ["gsm"],
         # "mmlu": ["mmlu"],
-        "classic": ["legal_support", "bbq", "lsat_qa"]
+        # "classic": ["legal_support", "bbq", "lsat_qa"]
     }
 
     for benchmark_name, scenario_list in benchmark_scenarios.items():
         for scenario_name in scenario_list:
             print(scenario_name)
-            mult_choice_flag = False if scenario_name in ["legalbench", "math"] else True
+            mult_choice_flag = False if scenario_name in ["legalbench", "math", "gsm"] else True
             
             with open(f"data/gather_helm_data/responses_monkey_{benchmark_name}.pkl", "rb") as f:
                 results_full = pickle.load(f)
@@ -117,6 +120,14 @@ if __name__ == "__main__":
                     context_model_name = "AlephAlpha/luminous-base" # 2048
                 elif benchmark_name=="mmlu":
                     context_model_name = "microsoft/phi-2" # 2048
+                    
+            # lite gsm
+            elif model_name == "mistralai/mistral-7b-v0.1":
+                context_model_name = model_name
+            elif model_name == 'deepseek-ai/DeepSeek-R1-Distill-Llama-8B': # 131072
+                context_model_name = "openai/gpt-4o-2024-08-06" # 128000
+            
+            
             results = results[(results["request.model"] == context_model_name)]
             print(len(results))
             
@@ -143,7 +154,7 @@ if __name__ == "__main__":
             with open(out_path, 'wb') as f:
                 pickle.dump(pre_query, f)
 
-            login("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")
+            login()
             api = HfApi()
             api.upload_file(
                 path_or_fileobj=out_path,

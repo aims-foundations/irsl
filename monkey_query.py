@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from vllm import LLM, SamplingParams, RequestOutput
 from vllm.distributed.parallel_state import destroy_model_parallel
 
-from monkey_query_utils import create_prompts_and_answers, exact_match, quasi_exact_match, is_equiv_chain_of_thought
+from monkey_query_utils import create_prompts_and_answers, exact_match, quasi_exact_match, is_equiv_chain_of_thought, final_number_exact_match
 
 def generate_outputs_from_model(
     model_nickname: str = "meta-llama/Meta-Llama-3-8B-Instruct",
@@ -89,9 +89,9 @@ def sample_outputs_from_policy_model_and_write_to_disk(
     # problem_types = data["problem_types"]
     solutions = data["solutions"]
 
-    # if dataset == "gsm8k":
-    #     evaluate_fn = is_correct_gsm8k
-    if dataset in ["mmlu", "commonsense"]:
+    if dataset == "gsm":
+        evaluate_fn = final_number_exact_match
+    elif dataset in ["mmlu", "commonsense"]:
         evaluate_fn = exact_match
     elif dataset in ["med_qa", "legalbench", "bbq", "lsat_qa", "legal_support"]:
         evaluate_fn = quasi_exact_match
