@@ -16,6 +16,9 @@ from sklearn.metrics import mean_squared_error
 from scipy.stats import pearsonr
 from sklearn.kernel_ridge import KernelRidge
 from pathlib import Path
+import glob
+import warnings
+warnings.filterwarnings("ignore")
 
 probs_holder = {'current': None}
 
@@ -70,8 +73,18 @@ def linear_func(z, w, b):
 
 if __name__ == "__main__":
     device = "cuda:1"
-    # method = "diff_split"
-    method = "55randomsplit"
+    B = 50000
+    method = "diff_split"
+    # method = "55randomsplit"
+    
+    # ScalingIntelligence/monkey_business
+    monkey_business_list = [
+        f"hf://datasets/ScalingIntelligence/monkey_business/GSM8K_{monkey_model}.json"
+        for monkey_model in ["Llama-3-8B-Instruct", "Llama-3-70B-Instruct"]
+    ]
+    
+    # Rylan query
+    rylan_query_list = glob.glob("data/rylan_monkey/GSM8K*")
     
     # we query
     monkey_model_names = ["Meta-Llama-3-8B-Instruct", "pythia-12b", "pythia-6.9b"]
@@ -111,13 +124,19 @@ if __name__ == "__main__":
             for scenario in scenario_list
         },
         'harm_bench': 'safety',
+        'gsm': 'lite',
     }
-
-    for path in harmbench_list:
+    
+    all_list = monkey_business_list + rylan_query_list
+    for path in all_list:
         stem = Path(path).stem # e.g. "pythia-12b_lsat_qa"
         monkey_model_name, scenario_name = stem.split("_", 1)
+        if monkey_model_name == "GSM8K":
+            monkey_model_name = scenario_name
+            scenario_name = "gsm"
+
         benchmark_name = scenario_to_benchmark.get(scenario_name)
-        print(f"model={monkey_model_name}, scenario={scenario_name}, benchmark={benchmark_name}")
+        print(f"\nmodel={monkey_model_name}, scenario={scenario_name}, benchmark={benchmark_name}")
         monkey_dataset = pd.read_json(path)
         # monkey_dataset = pd.read_json(f"hf://datasets/stair-lab/monkey_queries/{monkey_model_name}_{scenario_name}.json")
         
@@ -165,28 +184,28 @@ if __name__ == "__main__":
         ]
         added_data = np.array(padded, dtype=float)
         added_data = torch.from_numpy(added_data).to(device=device).double().T
-        order = torch.argsort(added_data.mean(dim=1))
-        idx_middle = order[order.shape[0] // 2]
-        specific_model_idx = idx_middle + data.shape[0]
-        data = torch.cat([data, added_data], dim=0)
+        # order = torch.argsort(added_data.mean(dim=1))
+        # idx_middle = order[order.shape[0] // 2]
+        # specific_model_idx = idx_middle + data.shape[0]
+        # print(f"specific_model_idx: {specific_model_idx}")
+        all_data = torch.cat([data, added_data], dim=0)
         
-        n_test_takers, n_items = data.shape
-        print(f"data.shape: {data.shape}")
-        B = 50000
+        n_test_takers, n_items = all_data.shape
+        print(f"all_data.shape: {all_data.shape}")
         n_thetas_nuisance = 150
         optimized_z = []
         thetas_nuisance = torch.randn(n_thetas_nuisance, n_test_takers, device=device, dtype=torch.float64)
         for i in tqdm(range(0, n_items, B)):
-            data_batch = data[:, i:i+B]
-            current_B = data_batch.shape[1]
+            all_data_batch = all_data[:, i:i+B]
+            current_B = all_data_batch.shape[1]
             z = torch.randn(current_B, requires_grad=True, device=device, dtype=torch.float64)
             optim_z = LBFGS([z], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
             def closure_z():
                 optim_z.zero_grad()
-                mask = ~torch.isnan(data_batch).expand(n_thetas_nuisance, -1, -1)
+                mask = ~torch.isnan(all_data_batch).expand(n_thetas_nuisance, -1, -1)
                 probs = torch.sigmoid(thetas_nuisance[:, :, None] + z[None, None, :])
                 loss = -(Bernoulli(probs=probs[mask]).log_prob(
-                    data_batch.expand(n_thetas_nuisance, -1, -1)[mask]
+                    all_data_batch.expand(n_thetas_nuisance, -1, -1)[mask]
                 )).mean()
                 loss.backward()
                 probs_holder['current'] = probs.detach()
@@ -196,10 +215,21 @@ if __name__ == "__main__":
         zs = torch.cat(optimized_z)
 
         if method == "diff_split":
-            split = n_items // 2
-            sorted_desc = torch.argsort(helm_zs, descending=True)
-            train_idxs = sorted_desc[:split].tolist()
-            test_idxs  = sorted_desc[split:].tolist()
+            # split = n_items // 2
+            # sorted_desc = torch.argsort(helm_zs, descending=True)
+            # train_idxs = sorted_desc[:split].tolist()
+            # test_idxs  = sorted_desc[split:].tolist()
+            
+            temperature = 1  # Tune this: lower = more extreme bias, higher = softer bias
+            split_idx = n_items // 2
+            eps = 1e-6
+            weights = ((helm_zs.max() - helm_zs) + eps) ** (1.0 / temperature)
+            probs = weights / weights.sum()
+            train_idxs = torch.multinomial(probs, split_idx, replacement=False)
+            all_idxs = torch.arange(n_items)
+            mask = torch.zeros(n_items, dtype=torch.bool)
+            mask[train_idxs] = True
+            test_idxs = all_idxs[~mask]
 
         elif method == "55randomsplit":
             indices = torch.randperm(n_items)
@@ -229,23 +259,23 @@ if __name__ == "__main__":
         helm_train_zs = helm_zs[train_idxs]
         helm_test_zs = helm_zs[test_idxs]
         
-        # params, _ = curve_fit(linear_func, helm_train_zs.cpu().numpy(), train_zs.cpu().numpy())
-        # w, b = params
-        # test_zs = linear_func(helm_test_zs.cpu().numpy(), w, b)
+        params, _ = curve_fit(linear_func, helm_train_zs.cpu().numpy(), train_zs.cpu().numpy())
+        w, b = params
+        test_zs = linear_func(helm_test_zs.cpu().numpy(), w, b)
         
-        X_train = helm_train_zs.cpu().numpy().reshape(-1, 1)
-        y_train = train_zs.cpu().numpy()
-        X_test  = helm_test_zs.cpu().numpy().reshape(-1, 1)
-        kr = KernelRidge(alpha=1.0, kernel='rbf', gamma=0.1)
-        kr.fit(X_train, y_train)
-        test_zs = kr.predict(X_test)
+        # X_train = helm_train_zs.cpu().numpy().reshape(-1, 1)
+        # y_train = train_zs.cpu().numpy()
+        # X_test  = helm_test_zs.cpu().numpy().reshape(-1, 1)
+        # kr = KernelRidge(alpha=1.0, kernel='rbf', gamma=0.1)
+        # kr.fit(X_train, y_train)
+        # test_zs = kr.predict(X_test)
         
         plt.figure()
         plt.scatter(helm_train_zs.cpu().numpy(), train_zs.cpu().numpy(), marker='o', label='Train data')
         x_line = np.linspace(helm_train_zs.cpu().numpy().min(), helm_train_zs.cpu().numpy().max(), 100)
-        # y_line = w * x_line + b
+        y_line = w * x_line + b
         x_line = x_line.reshape(-1, 1)
-        y_line = kr.predict(x_line)
+        # y_line = kr.predict(x_line)
         plt.plot(x_line, y_line, linestyle='-', label='Fitted line')
         plt.scatter(helm_test_zs.cpu().numpy(), test_zs_true.cpu().numpy(), marker='x', label='Test true')
         plt.scatter(helm_test_zs.cpu().numpy(), test_zs, marker='^', label='Test predicted')
@@ -313,18 +343,33 @@ if __name__ == "__main__":
         train_neglog_est_2 = -np.log(np.array(train_pass_datks_est2))
         
         ### 3. distributional estimator with IRT
-        train_data_specific_model = data[specific_model_idx][train_idxs]
+        # train_data_specific_model = data[specific_model_idx][train_idxs]
+        # theta = torch.randn((1,), requires_grad=True, device=device, dtype=torch.float64)
+        # optim_theta = LBFGS([theta], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
+        # def closure_theta():
+        #     optim_theta.zero_grad()
+        #     mask = ~torch.isnan(train_data_specific_model)
+        #     probs = torch.sigmoid(theta + train_zs)
+        #     loss = -(Bernoulli(probs=probs[mask]).log_prob(train_data_specific_model[mask])).mean()
+        #     loss.backward()
+        #     probs_holder['current'] = probs.detach()
+        #     return loss
+        # theta = trainer([theta], optim_theta, closure_theta)[0].detach()
+        
+        train_data_expanded = added_data[:, train_idxs].reshape(-1)  
+        train_zs_expanded = train_zs.repeat_interleave(added_data.shape[0])
         theta = torch.randn((1,), requires_grad=True, device=device, dtype=torch.float64)
         optim_theta = LBFGS([theta], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
         def closure_theta():
             optim_theta.zero_grad()
-            mask = ~torch.isnan(train_data_specific_model)
-            probs = torch.sigmoid(theta + train_zs)
-            loss = -(Bernoulli(probs=probs[mask]).log_prob(train_data_specific_model[mask])).mean()
+            mask = ~torch.isnan(train_data_expanded)
+            probs = torch.sigmoid(theta + train_zs_expanded)
+            loss = -(Bernoulli(probs=probs[mask]).log_prob(train_data_expanded[mask])).mean()
             loss.backward()
             probs_holder['current'] = probs.detach()
             return loss
         theta = trainer([theta], optim_theta, closure_theta)[0].detach()
+        
         print(f"theta: {theta.item()}")
         train_probs = torch.sigmoid(theta + train_zs).cpu().numpy() # shape: (n_questions,)
         train_pass_datks_est3 = []
