@@ -7,13 +7,8 @@ from pyarrow.lib import ArrowInvalid
 from monkey_query_utils import (
     exact_match,
     quasi_exact_match,
+    model_nickname2helm_model_name
 )
-
-model_nickname2helm_model_name = {
-    "Meta-Llama-3-8B-Instruct": "meta/llama-3-8b",
-    "pythia-6.9b": "eleutherai/pythia-6.9b",
-    "pythia-12b": "eleutherai/pythia-6.9b", # 12b and 6.9b have same context length
-}
 
 # Base directories
 base_eval_dir = pathlib.Path("data/monkey_query/eval_results")
@@ -51,7 +46,7 @@ for scenario_dir in sorted(base_eval_dir.iterdir()):
         print(f"\nGathering results for {scenario_name}/{model_name}...")
         
         # Load the pre-query DataFrame for this scenario
-        helm_model = model_nickname2helm_model_name[model_name]
+        helm_model = model_nickname2helm_model_name.get(model_nickname, model_nickname)
         prequery_path = pathlib.Path(cache_dir) / f"{helm_model.replace('/', '_')}_{scenario_name}_pre_query.pkl"
         with open(prequery_path, 'rb') as f:
             pre_df = pickle.load(f)
