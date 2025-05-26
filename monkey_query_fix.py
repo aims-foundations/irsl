@@ -10,6 +10,11 @@ from monkey_query_utils import (
     model_nickname2helm_model_name
 )
 
+model_nickname2helm_model_name = {
+    full.split("/")[-1]: helm_name
+    for full, helm_name in model_nickname2helm_model_name.items()
+}
+
 # Base directories
 base_eval_dir = pathlib.Path("data/monkey_query/eval_results")
 base_fix_dir = pathlib.Path("data/monkey_query/eval_results_fix")
