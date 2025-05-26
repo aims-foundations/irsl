@@ -13,7 +13,7 @@ model_nickname2helm_model_name = {
     "Qwen/Qwen3-8B": "Qwen/Qwen3-8B",
     "Qwen/Qwen3-32B": "Qwen/Qwen3-8B",
     "Qwen/Qwen3-14B": "Qwen/Qwen3-8B",
-    "deepseek-ai/DeepSeek-R1-Distill-Llama-8B": "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
+    "deepseek-ai/DeepSeek-R1-Distill-Llama-8B": "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
     "deepseek-ai/DeepSeek-V2-Lite-Chat": "deepseek-ai/DeepSeek-R1-Distill-Llama-8B", # 163840 -> 131072 -> 128000
     "google/gemma-3-27b-it": "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
 }
