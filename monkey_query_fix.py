@@ -37,6 +37,8 @@ for scenario_dir in sorted(base_eval_dir.iterdir()):
         evaluate_fn = exact_match
     elif scenario_name in ["med_qa", "legalbench", "bbq", "lsat_qa", "legal_support"]:
         evaluate_fn = quasi_exact_match
+    elif scenario_name in ["math", "gsm"]:
+        evaluate_fn = None
     else:
         print(f"Skipping unknown dataset: {scenario_name}")
         continue
