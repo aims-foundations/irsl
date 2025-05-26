@@ -84,14 +84,28 @@ if __name__ == "__main__":
     ]
     
     # Rylan query
-    rylan_query_list = glob.glob("data/rylan_monkey/GSM8K*")
+    rylan_query_list = [
+        f"hf://datasets/stair-lab/monkey_queries/rylan_query/GSM8K_Pythia_6.9B.json",
+        f"hf://datasets/stair-lab/monkey_queries/rylan_query/GSM8K_Pythia_12B.json",
+    ]
+    # rylan_query_list = glob.glob("data/rylan_monkey/GSM8K*")
     
     # we query
-    monkey_model_names = ["Meta-Llama-3-8B-Instruct", "pythia-12b", "pythia-6.9b"]
+    # ["Meta-Llama-3-8B-Instruct", "pythia-12b", "pythia-6.9b"]
+    monkey_model_names = [ 
+        "Mistral-7B-v0.1",
+        "gemma-3-27b-it",
+        "Qwen3-8B",
+        "Qwen3-32B",
+        "Qwen3-14B",
+        "DeepSeek-V2-Lite-Chat",
+        "DeepSeek-R1-Distill-Llama-8B",
+    ]
     benchmark_scenarios = {
-        "lite": ["legalbench", "math", "commonsense", "med_qa"],
-        "mmlu": ["mmlu"],
-        "classic": ["bbq", "lsat_qa"] # , "legal_support"
+        "lite": ["gsm"],
+        # "lite": ["legalbench", "math", "commonsense", "med_qa"],
+        # "mmlu": ["mmlu"],
+        # "classic": ["bbq", "lsat_qa"] # , "legal_support"
     }
     we_query_list = [
         f"hf://datasets/stair-lab/monkey_queries/{monkey_model_name}_{scenario_name}.json"
@@ -127,7 +141,7 @@ if __name__ == "__main__":
         'gsm': 'lite',
     }
     
-    all_list = monkey_business_list + rylan_query_list
+    all_list = we_query_list+monkey_business_list+rylan_query_list
     for path in all_list:
         stem = Path(path).stem # e.g. "pythia-12b_lsat_qa"
         monkey_model_name, scenario_name = stem.split("_", 1)
@@ -190,22 +204,22 @@ if __name__ == "__main__":
         # print(f"specific_model_idx: {specific_model_idx}")
         all_data = torch.cat([data, added_data], dim=0)
         
-        n_test_takers, n_items = all_data.shape
-        print(f"all_data.shape: {all_data.shape}")
+        n_test_takers, n_items = added_data.shape
+        print(f"added_data.shape: {added_data.shape}")
         n_thetas_nuisance = 150
         optimized_z = []
         thetas_nuisance = torch.randn(n_thetas_nuisance, n_test_takers, device=device, dtype=torch.float64)
         for i in tqdm(range(0, n_items, B)):
-            all_data_batch = all_data[:, i:i+B]
-            current_B = all_data_batch.shape[1]
+            added_data_batch = added_data[:, i:i+B]
+            current_B = added_data_batch.shape[1]
             z = torch.randn(current_B, requires_grad=True, device=device, dtype=torch.float64)
             optim_z = LBFGS([z], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
             def closure_z():
                 optim_z.zero_grad()
-                mask = ~torch.isnan(all_data_batch).expand(n_thetas_nuisance, -1, -1)
+                mask = ~torch.isnan(added_data_batch).expand(n_thetas_nuisance, -1, -1)
                 probs = torch.sigmoid(thetas_nuisance[:, :, None] + z[None, None, :])
                 loss = -(Bernoulli(probs=probs[mask]).log_prob(
-                    all_data_batch.expand(n_thetas_nuisance, -1, -1)[mask]
+                    added_data_batch.expand(n_thetas_nuisance, -1, -1)[mask]
                 )).mean()
                 loss.backward()
                 probs_holder['current'] = probs.detach()
@@ -213,6 +227,30 @@ if __name__ == "__main__":
             z_optimized = trainer([z], optim_z, closure_z)[0].detach()
             optimized_z.append(z_optimized)
         zs = torch.cat(optimized_z)
+              
+        # n_test_takers, n_items = all_data.shape
+        # print(f"all_data.shape: {all_data.shape}")
+        # n_thetas_nuisance = 150
+        # optimized_z = []
+        # thetas_nuisance = torch.randn(n_thetas_nuisance, n_test_takers, device=device, dtype=torch.float64)
+        # for i in tqdm(range(0, n_items, B)):
+        #     all_data_batch = all_data[:, i:i+B]
+        #     current_B = all_data_batch.shape[1]
+        #     z = torch.randn(current_B, requires_grad=True, device=device, dtype=torch.float64)
+        #     optim_z = LBFGS([z], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
+        #     def closure_z():
+        #         optim_z.zero_grad()
+        #         mask = ~torch.isnan(all_data_batch).expand(n_thetas_nuisance, -1, -1)
+        #         probs = torch.sigmoid(thetas_nuisance[:, :, None] + z[None, None, :])
+        #         loss = -(Bernoulli(probs=probs[mask]).log_prob(
+        #             all_data_batch.expand(n_thetas_nuisance, -1, -1)[mask]
+        #         )).mean()
+        #         loss.backward()
+        #         probs_holder['current'] = probs.detach()
+        #         return loss
+        #     z_optimized = trainer([z], optim_z, closure_z)[0].detach()
+        #     optimized_z.append(z_optimized)
+        # zs = torch.cat(optimized_z)
 
         if method == "diff_split":
             # split = n_items // 2
@@ -220,7 +258,7 @@ if __name__ == "__main__":
             # train_idxs = sorted_desc[:split].tolist()
             # test_idxs  = sorted_desc[split:].tolist()
             
-            temperature = 1  # Tune this: lower = more extreme bias, higher = softer bias
+            temperature = 0.5  # Tune this: lower = more extreme bias, higher = softer bias
             split_idx = n_items // 2
             eps = 1e-6
             weights = ((helm_zs.max() - helm_zs) + eps) ** (1.0 / temperature)
@@ -307,6 +345,7 @@ if __name__ == "__main__":
         print(f"train_pass_iatk_matrix.shape: {train_pass_iatk_matrix.shape}")
         k_arange = np.arange(1, k + 1)
         
+        test_pass_iat1s = np.array([sum(iscorrects)/len(iscorrects) for iscorrects in test_monkey_questions2iscorrects.values()])
         max_len_test = max(len(iscorrects) for iscorrects in test_monkey_questions2iscorrects.values())
         test_pass_iatk_matrix = np.stack([
             np.pad(
@@ -386,17 +425,21 @@ if __name__ == "__main__":
             test_pass_datks_est3.append(test_pass_datk_est3)
         test_neglog_est_3 = -np.log(np.array(test_pass_datks_est3))
         
-        corr = pearsonr(torch.sigmoid(theta + train_zs).cpu().numpy(), train_pass_iat1s).statistic
+        corr_train = pearsonr(train_probs, train_pass_iat1s).statistic
+        corr_test = pearsonr(test_probs, test_pass_iat1s).statistic
+        all_values = np.concatenate([train_probs, test_probs, train_pass_iat1s, test_pass_iat1s])
+        small, large = all_values.min(), all_values.max()
         with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
             plt.figure(figsize=(6,6))
-            plt.scatter(torch.sigmoid(theta + train_zs).cpu().numpy(), train_pass_iat1s)
+            plt.scatter(train_probs, train_pass_iat1s, c="blue")
+            plt.scatter(test_probs, test_pass_iat1s, c="red")
             plt.xlabel("sigmoid(theta+z)", fontsize=20)
             plt.ylabel("Success Rate", fontsize=20)
-            plt.title(r'Pearson Correlation: {:.2f}'.format(corr), fontsize=22)
+            plt.title(r'Train Corr: {:.2f}, Test Corr: {:.2f}'.format(corr_train, corr_test), fontsize=22)
             plt.tick_params(axis="both", labelsize=14)
-            plt.plot([0, 1], [0, 1]) 
-            plt.xlim(0, 1)
-            plt.ylim(0, 1)  
+            plt.plot([small, large], [small, large]) 
+            plt.xlim(small, large)
+            plt.ylim(small, large)
             plt.savefig(f"{output_dir}/prob_corr_{monkey_model_name}_{scenario_name}.png", dpi=300)
 
         results_dict = {
