@@ -14,6 +14,7 @@ model_nickname2helm_model_name = {
     full.split("/")[-1]: helm_name
     for full, helm_name in model_nickname2helm_model_name.items()
 }
+print(model_nickname2helm_model_name)
 
 # Base directories
 base_eval_dir = pathlib.Path("data/monkey_query/eval_results")
@@ -72,7 +73,7 @@ for scenario_dir in sorted(base_eval_dir.iterdir()):
                 print(f"Skipping `{src_path.parent.name}` due to read error: {e}")
                 continue
             
-            if "scenario_name" not in ["math", "gsm"]:
+            if scenario_name not in ["math", "gsm"]:
                 # Keep only the text before the first newline
                 df['response'] = df['response'].str.split("\n", n=1).str[0]
                 # Recompute the score based on the original solution
