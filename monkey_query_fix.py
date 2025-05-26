@@ -70,7 +70,7 @@ for scenario_dir in sorted(base_eval_dir.iterdir()):
                 print(f"Skipping `{src_path.parent.name}` due to read error: {e}")
                 continue
             
-            if "scenario_name" != "math":
+            if "scenario_name" not in ["math", "gsm"]:
                 # Keep only the text before the first newline
                 df['response'] = df['response'].str.split("\n", n=1).str[0]
                 # Recompute the score based on the original solution
