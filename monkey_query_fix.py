@@ -51,7 +51,7 @@ for scenario_dir in sorted(base_eval_dir.iterdir()):
         print(f"\nGathering results for {scenario_name}/{model_name}...")
         
         # Load the pre-query DataFrame for this scenario
-        helm_model = model_nickname2helm_model_name.get(model_name, model_name)
+        helm_model = model_nickname2helm_model_name[model_name]
         prequery_path = pathlib.Path(cache_dir) / f"{helm_model.replace('/', '_')}_{scenario_name}_pre_query.pkl"
         with open(prequery_path, 'rb') as f:
             pre_df = pickle.load(f)
