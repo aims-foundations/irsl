@@ -10,10 +10,12 @@ model_nickname2helm_model_name = {
     "EleutherAI/pythia-6.9b": "eleutherai/pythia-6.9b",
     "EleutherAI/pythia-12b": "eleutherai/pythia-6.9b", # 12b and 6.9b have same context length
     "mistralai/Mistral-7B-v0.1": "mistralai/mistral-7b-v0.1",
+    "Qwen/Qwen3-8B": "Qwen/Qwen3-8B",
     "Qwen/Qwen3-32B": "Qwen/Qwen3-8B",
     "Qwen/Qwen3-14B": "Qwen/Qwen3-8B",
+    "deepseek-ai/DeepSeek-R1-Distill-Llama-8B": "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
     "deepseek-ai/DeepSeek-V2-Lite-Chat": "deepseek-ai/DeepSeek-R1-Distill-Llama-8B", # 163840 -> 131072 -> 128000
-    "google/gemma-3-27b-it": "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
+    "google/gemma-3-27b-it": "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
 }
 
 def create_prompts_and_answers(model_nickname, dataset, num_prompts_to_use):
@@ -21,7 +23,7 @@ def create_prompts_and_answers(model_nickname, dataset, num_prompts_to_use):
         repo_id="stair-lab/monkey_query_pre", 
         repo_type="dataset",
     )
-    helm_model_name = model_nickname2helm_model_name.get(model_nickname, model_nickname)
+    helm_model_name = model_nickname2helm_model_name[model_nickname]
     file_path = f"{cache_dir}/{helm_model_name.replace('/', '_')}_{dataset}_pre_query.pkl"
     with open(file_path, 'rb') as f:
         df = pickle.load(f)
