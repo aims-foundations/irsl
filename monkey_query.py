@@ -75,6 +75,7 @@ def sample_outputs_from_policy_model_and_write_to_disk(
         # "swap_space": 4,  # GiB
         # "swap_space": 24,  # GiB
         "enable_prefix_caching": True,
+        "trust_remote_code": True
     }
 
     # Load the model.
