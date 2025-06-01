@@ -17,11 +17,27 @@ from scipy.stats import pearsonr
 from sklearn.kernel_ridge import KernelRidge
 from pathlib import Path
 import glob
+from huggingface_hub import snapshot_download
 import warnings
 warnings.filterwarnings("ignore")
 
-probs_holder = {'current': None}
+def irt_formula(theta, z, guess):
+    return guess + (1-guess)*torch.sigmoid(theta[:, None] + z[None, :])
+def irt_formula_nuisance(theta, z, guess):
+    return guess + (1-guess)*torch.sigmoid(theta[:, :, None] + z[None, None, :])
+scenario2guess = {
+    'bbq': 1/3,
+    'commonsense': 0.25,
+    'gsm': 0,
+    'harm_bench': 0,
+    'legalbench': 0.2,
+    'lsat_qa': 0.2,
+    'math': 0,
+    'med_qa': 0.25,
+    'mmlu': 0.25,
+}
 
+probs_holder = {'current': None}
 def trainer(parameters, optim, closure, n_iter=100, verbose=True):
     pbar = tqdm(range(n_iter)) if verbose else range(n_iter)
     for iteration in pbar:
@@ -72,7 +88,7 @@ def linear_func(z, w, b):
     return w * z + b
 
 if __name__ == "__main__":
-    device = "cuda:1"
+    device = "cuda:7"
     B = 50000
     method = "diff_split"
     # method = "55randomsplit"
@@ -84,15 +100,33 @@ if __name__ == "__main__":
     ]
     
     # Rylan query
-    rylan_query_list = [
-        f"hf://datasets/stair-lab/monkey_queries/rylan_query/GSM8K_Pythia_6.9B.json",
-        f"hf://datasets/stair-lab/monkey_queries/rylan_query/GSM8K_Pythia_12B.json",
-    ]
+    # rylan_query_list = [
+    #     f"hf://datasets/stair-lab/monkey_queries/rylan_query/GSM8K_Pythia_6.9B.json",
+    #     f"hf://datasets/stair-lab/monkey_queries/rylan_query/GSM8K_Pythia_12B.json",
+    # ]
     # rylan_query_list = glob.glob("data/rylan_monkey/GSM8K*")
+    local_dir = snapshot_download(
+        repo_id="stair-lab/monkey_queries",
+        repo_type="dataset"
+    )
+    rylan_query_list = glob.glob(
+        os.path.join(local_dir, "rylan_query", "GSM8K*")
+    )
     
     # we query
-    # ["Meta-Llama-3-8B-Instruct", "pythia-12b", "pythia-6.9b"]
-    monkey_model_names = [ 
+    monkey_model_names_1 = ["Meta-Llama-3-8B-Instruct", "pythia-12b", "pythia-6.9b"]
+    benchmark_scenarios_1 = {
+        "lite": ["legalbench", "math", "commonsense", "med_qa"],
+        "mmlu": ["mmlu"],
+        "classic": ["bbq", "lsat_qa"] # , "legal_support"
+    }
+    we_query_list_1 = [
+        f"hf://datasets/stair-lab/monkey_queries/{monkey_model_name}_{scenario_name}.json"
+        for monkey_model_name in monkey_model_names_1
+        for scenario_list in benchmark_scenarios_1.values()
+        for scenario_name in scenario_list
+    ]
+    monkey_model_names_2 = [ 
         "Mistral-7B-v0.1",
         "gemma-3-27b-it",
         "Qwen3-8B",
@@ -101,16 +135,13 @@ if __name__ == "__main__":
         "DeepSeek-V2-Lite-Chat",
         "DeepSeek-R1-Distill-Llama-8B",
     ]
-    benchmark_scenarios = {
+    benchmark_scenarios_2 = {
         "lite": ["gsm"],
-        # "lite": ["legalbench", "math", "commonsense", "med_qa"],
-        # "mmlu": ["mmlu"],
-        # "classic": ["bbq", "lsat_qa"] # , "legal_support"
     }
-    we_query_list = [
+    we_query_list_2 = [
         f"hf://datasets/stair-lab/monkey_queries/{monkey_model_name}_{scenario_name}.json"
-        for monkey_model_name in monkey_model_names
-        for scenario_list in benchmark_scenarios.values()
+        for monkey_model_name in monkey_model_names_2
+        for scenario_list in benchmark_scenarios_2.values()
         for scenario_name in scenario_list
     ]
     
@@ -134,14 +165,20 @@ if __name__ == "__main__":
     scenario_to_benchmark = {
         **{
             scenario: benchmark_name
-            for benchmark_name, scenario_list in benchmark_scenarios.items()
+            for benchmark_name, scenario_list in benchmark_scenarios_1.items()
+            for scenario in scenario_list
+        },
+        **{
+            scenario: benchmark_name
+            for benchmark_name, scenario_list in benchmark_scenarios_2.items()
             for scenario in scenario_list
         },
         'harm_bench': 'safety',
         'gsm': 'lite',
     }
     
-    all_list = we_query_list+monkey_business_list+rylan_query_list
+    all_list = we_query_list_1
+    # monkey_business_list + rylan_query_list + we_query_list_1 + we_query_list_2 + harmbench_list
     for path in all_list:
         stem = Path(path).stem # e.g. "pythia-12b_lsat_qa"
         monkey_model_name, scenario_name = stem.split("_", 1)
@@ -151,6 +188,8 @@ if __name__ == "__main__":
 
         benchmark_name = scenario_to_benchmark.get(scenario_name)
         print(f"\nmodel={monkey_model_name}, scenario={scenario_name}, benchmark={benchmark_name}")
+        # guess = scenario2guess[scenario_name]
+        guess = 0
         monkey_dataset = pd.read_json(path)
         # monkey_dataset = pd.read_json(f"hf://datasets/stair-lab/monkey_queries/{monkey_model_name}_{scenario_name}.json")
         
@@ -198,52 +237,24 @@ if __name__ == "__main__":
         ]
         added_data = np.array(padded, dtype=float)
         added_data = torch.from_numpy(added_data).to(device=device).double().T
-        # order = torch.argsort(added_data.mean(dim=1))
-        # idx_middle = order[order.shape[0] // 2]
-        # specific_model_idx = idx_middle + data.shape[0]
-        # print(f"specific_model_idx: {specific_model_idx}")
         all_data = torch.cat([data, added_data], dim=0)
         
-        n_test_takers, n_items = added_data.shape
-        print(f"added_data.shape: {added_data.shape}")
-        n_thetas_nuisance = 150
-        optimized_z = []
-        thetas_nuisance = torch.randn(n_thetas_nuisance, n_test_takers, device=device, dtype=torch.float64)
-        for i in tqdm(range(0, n_items, B)):
-            added_data_batch = added_data[:, i:i+B]
-            current_B = added_data_batch.shape[1]
-            z = torch.randn(current_B, requires_grad=True, device=device, dtype=torch.float64)
-            optim_z = LBFGS([z], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
-            def closure_z():
-                optim_z.zero_grad()
-                mask = ~torch.isnan(added_data_batch).expand(n_thetas_nuisance, -1, -1)
-                probs = torch.sigmoid(thetas_nuisance[:, :, None] + z[None, None, :])
-                loss = -(Bernoulli(probs=probs[mask]).log_prob(
-                    added_data_batch.expand(n_thetas_nuisance, -1, -1)[mask]
-                )).mean()
-                loss.backward()
-                probs_holder['current'] = probs.detach()
-                return loss
-            z_optimized = trainer([z], optim_z, closure_z)[0].detach()
-            optimized_z.append(z_optimized)
-        zs = torch.cat(optimized_z)
-              
-        # n_test_takers, n_items = all_data.shape
-        # print(f"all_data.shape: {all_data.shape}")
+        # n_test_takers, n_items = added_data.shape
+        # print(f"added_data.shape: {added_data.shape}")
         # n_thetas_nuisance = 150
         # optimized_z = []
         # thetas_nuisance = torch.randn(n_thetas_nuisance, n_test_takers, device=device, dtype=torch.float64)
         # for i in tqdm(range(0, n_items, B)):
-        #     all_data_batch = all_data[:, i:i+B]
-        #     current_B = all_data_batch.shape[1]
+        #     added_data_batch = added_data[:, i:i+B]
+        #     current_B = added_data_batch.shape[1]
         #     z = torch.randn(current_B, requires_grad=True, device=device, dtype=torch.float64)
         #     optim_z = LBFGS([z], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
         #     def closure_z():
         #         optim_z.zero_grad()
-        #         mask = ~torch.isnan(all_data_batch).expand(n_thetas_nuisance, -1, -1)
-        #         probs = torch.sigmoid(thetas_nuisance[:, :, None] + z[None, None, :])
+        #         mask = ~torch.isnan(added_data_batch).expand(n_thetas_nuisance, -1, -1)
+        #         probs = irt_formula_nuisance(thetas_nuisance, z, guess)
         #         loss = -(Bernoulli(probs=probs[mask]).log_prob(
-        #             all_data_batch.expand(n_thetas_nuisance, -1, -1)[mask]
+        #             added_data_batch.expand(n_thetas_nuisance, -1, -1)[mask]
         #         )).mean()
         #         loss.backward()
         #         probs_holder['current'] = probs.detach()
@@ -251,6 +262,30 @@ if __name__ == "__main__":
         #     z_optimized = trainer([z], optim_z, closure_z)[0].detach()
         #     optimized_z.append(z_optimized)
         # zs = torch.cat(optimized_z)
+              
+        n_test_takers, n_items = all_data.shape
+        print(f"all_data.shape: {all_data.shape}")
+        n_thetas_nuisance = 150
+        optimized_z = []
+        thetas_nuisance = torch.randn(n_thetas_nuisance, n_test_takers, device=device, dtype=torch.float64)
+        for i in tqdm(range(0, n_items, B)):
+            all_data_batch = all_data[:, i:i+B]
+            current_B = all_data_batch.shape[1]
+            z = torch.randn(current_B, requires_grad=True, device=device, dtype=torch.float64)
+            optim_z = LBFGS([z], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
+            def closure_z():
+                optim_z.zero_grad()
+                mask = ~torch.isnan(all_data_batch).expand(n_thetas_nuisance, -1, -1)
+                probs = irt_formula_nuisance(thetas_nuisance, z, guess)
+                loss = -(Bernoulli(probs=probs[mask]).log_prob(
+                    all_data_batch.expand(n_thetas_nuisance, -1, -1)[mask]
+                )).mean()
+                loss.backward()
+                probs_holder['current'] = probs.detach()
+                return loss
+            z_optimized = trainer([z], optim_z, closure_z)[0].detach()
+            optimized_z.append(z_optimized)
+        zs = torch.cat(optimized_z)
 
         if method == "diff_split":
             # split = n_items // 2
@@ -324,7 +359,6 @@ if __name__ == "__main__":
         plt.savefig(f"{output_dir}/helm_zs_vs_monkey_zs_{monkey_model_name}_{scenario_name}.png", dpi=300)
         
         train_pass_iat1s = np.array([sum(iscorrects)/len(iscorrects) for iscorrects in train_monkey_questions2iscorrects.values()])
-        max_len_train = max(len(iscorrects) for iscorrects in train_monkey_questions2iscorrects.values())
         train_pass_iatk_matrix = np.stack([
             np.pad(
                 np.array([
@@ -336,7 +370,7 @@ if __name__ == "__main__":
                     for k in range(1, len(iscorrects) + 1)
                 ]),
                 # pad on the right with edge values (i.e. repeat the last element)
-                (0, max_len_train - len(iscorrects)),
+                (0, max_len - len(iscorrects)),
                 mode='edge'
             )
             for iscorrects in tqdm(train_monkey_questions2iscorrects.values())
@@ -346,7 +380,6 @@ if __name__ == "__main__":
         k_arange = np.arange(1, k + 1)
         
         test_pass_iat1s = np.array([sum(iscorrects)/len(iscorrects) for iscorrects in test_monkey_questions2iscorrects.values()])
-        max_len_test = max(len(iscorrects) for iscorrects in test_monkey_questions2iscorrects.values())
         test_pass_iatk_matrix = np.stack([
             np.pad(
                 np.array([
@@ -357,8 +390,7 @@ if __name__ == "__main__":
                     )
                     for k in range(1, len(iscorrects) + 1)
                 ]),
-                # pad on the right with edge values (i.e. repeat the last element)
-                (0, max_len_test - len(iscorrects)),
+                (0, max_len - len(iscorrects)),
                 mode='edge'
             )
             for iscorrects in tqdm(test_monkey_questions2iscorrects.values())
@@ -381,36 +413,23 @@ if __name__ == "__main__":
             train_pass_datks_est2.append(train_pass_datk_est2)
         train_neglog_est_2 = -np.log(np.array(train_pass_datks_est2))
         
-        ### 3. distributional estimator with IRT
-        # train_data_specific_model = data[specific_model_idx][train_idxs]
-        # theta = torch.randn((1,), requires_grad=True, device=device, dtype=torch.float64)
-        # optim_theta = LBFGS([theta], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
-        # def closure_theta():
-        #     optim_theta.zero_grad()
-        #     mask = ~torch.isnan(train_data_specific_model)
-        #     probs = torch.sigmoid(theta + train_zs)
-        #     loss = -(Bernoulli(probs=probs[mask]).log_prob(train_data_specific_model[mask])).mean()
-        #     loss.backward()
-        #     probs_holder['current'] = probs.detach()
-        #     return loss
-        # theta = trainer([theta], optim_theta, closure_theta)[0].detach()
-        
+        ### 3. distributional estimator with IRT        
         train_data_expanded = added_data[:, train_idxs].reshape(-1)  
         train_zs_expanded = train_zs.repeat_interleave(added_data.shape[0])
         theta = torch.randn((1,), requires_grad=True, device=device, dtype=torch.float64)
         optim_theta = LBFGS([theta], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
         def closure_theta():
             optim_theta.zero_grad()
-            mask = ~torch.isnan(train_data_expanded)
-            probs = torch.sigmoid(theta + train_zs_expanded)
-            loss = -(Bernoulli(probs=probs[mask]).log_prob(train_data_expanded[mask])).mean()
+            mask = ~torch.isnan(train_data_expanded)[None, :]
+            probs = irt_formula(theta, train_zs_expanded, guess)
+            loss = -(Bernoulli(probs=probs[mask]).log_prob(train_data_expanded[None, :][mask])).mean()
             loss.backward()
             probs_holder['current'] = probs.detach()
             return loss
         theta = trainer([theta], optim_theta, closure_theta)[0].detach()
         
         print(f"theta: {theta.item()}")
-        train_probs = torch.sigmoid(theta + train_zs).cpu().numpy() # shape: (n_questions,)
+        train_probs = irt_formula(theta, train_zs, guess).reshape(-1).cpu().numpy() # shape: (n_questions,)
         train_pass_datks_est3 = []
         for k in k_arange:
             train_pass_datk_est3 = cal_passdatk(train_probs, k)
@@ -418,7 +437,7 @@ if __name__ == "__main__":
         train_neglog_est_3 = -np.log(np.array(train_pass_datks_est3))
         
         test_zs = torch.tensor(test_zs, dtype=torch.float64, device=device)
-        test_probs = torch.sigmoid(theta + test_zs).cpu().numpy() # shape: (n_questions,)
+        test_probs = irt_formula(theta, test_zs, guess).reshape(-1).cpu().numpy() # shape: (n_questions,)
         test_pass_datks_est3 = []
         for k in k_arange:
             test_pass_datk_est3 =cal_passdatk(test_probs, k)

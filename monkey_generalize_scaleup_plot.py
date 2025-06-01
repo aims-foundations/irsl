@@ -1,110 +1,74 @@
 import os
 import pickle
+import glob
+import re
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error
 from tueplots import bundles
-import glob
 
-# monkey_model_names = ["Meta-Llama-3-8B-Instruct", "pythia-12b", "pythia-6.9b"]
-# for monkey_model_name in monkey_model_names:
-#     scenarios_all = ["commonsense", "math", "med_qa", "legalbench", "mmlu", "bbq"] # "legal_support", "lsat_qa" 
-
-#     test_mse = []
-#     for scenario in scenarios_all:
-    #     p = f"result/monkey_generalize_scaleup_diff_split/monkey_scaleup_data_{monkey_model_name}_{scenario}.pkl"
-    #     with open(p, "rb") as f:
-    #         res = pickle.load(f)
-
-    #     # invert the negative log values back to probabilities
-    #     gt        = np.exp(-res["test_neglog_gts"])
-    #     pred_ls   = np.exp(-res["train_neglog_est_1"])
-    #     pred_dist = np.exp(-res["train_neglog_est_2"])
-    #     pred_rasch= np.exp(-res["test_neglog_est_3"])
-
-    #     mse_ls    = mean_squared_error(gt, pred_ls)
-    #     mse_dist  = mean_squared_error(gt, pred_dist)
-    #     mse_rasch = mean_squared_error(gt, pred_rasch)
-
-    #     test_mse.append([mse_ls, mse_dist, mse_rasch])
-
-    # arr = np.array(test_mse)
-    # x = np.arange(len(scenarios_all))
-    # width = 0.2
-
-    # with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
-    #     fig, ax = plt.subplots(figsize=(10, 4))
-    #     ax.bar(x - width,     arr[:, 0], width=width, label="Least squares",    alpha=0.8)
-    #     ax.bar(x,             arr[:, 1], width=width, label="Distributional",   alpha=0.8)
-    #     ax.bar(x + width,     arr[:, 2], width=width, label="Rasch",            alpha=0.8)
-
-    #     ax.set_ylabel("Test MSE", fontsize=16)
-    #     ax.set_xticks(x)
-    #     ax.set_xticklabels(scenarios_all, rotation=45, ha="right", fontsize=12)
-    #     ax.tick_params(axis="both", labelsize=12)
-    #     ax.legend(fontsize=12, loc="upper right")
-    #     ax.set_yscale("log")
-        
-    #     plt.tight_layout()
-    #     fig.savefig(
-    #         os.path.join(f"monkey_scaleup_{monkey_model_name}.png"),
-    #         dpi=300,
-    #         bbox_inches="tight"
-    #     )
-    #     plt.close(fig)
-
-# 1) Define your fixed scenario
-scenario = "gsm"
-
-# 2) Find all matching .pkl files for that scenario
-pattern = f"result/monkey_generalize_scaleup_diff_split/monkey_scaleup_data_*_{scenario}.pkl"
+# 1) find all files
+pattern = "result/monkey_generalize_scaleup_diff_split/monkey_scaleup_data_*.pkl"
 filepaths = glob.glob(pattern)
 
-test_mse = []
-model_names = []
-
+# 2) group results by scenario
+results_by_scenario = {}
 for fp in filepaths:
-    # 3) Extract monkey_model_name from filename
-    fname = os.path.basename(fp)  # e.g. monkey_scaleup_data_Llama-3-8B_gsm.pkl
-    monkey_model_name = fname.split("monkey_scaleup_data_")[1].split(".pkl")[0]
-    model_names.append(monkey_model_name)
+    fname = os.path.basename(fp)
+    # get the core: "monkey_scaleup_data_{model}_{scenario}.pkl" → "{model}_{scenario}"
+    core = fname.removeprefix("monkey_scaleup_data_").removesuffix(".pkl")
+    # split only on the last underscore to separate model vs. scenario
+    parts = re.split(r'(?<=[BbM])_', core, maxsplit=1)
+    if len(parts) == 2:
+        model_name, scenario = parts
+    else:
+        # fallback: split at the first underscore, whichever it is
+        model_name, scenario = core.split("_", 1)
 
-    # 4) Load results and invert neglog back to probabilities
+    
+    # load and compute MSEs
     with open(fp, "rb") as f:
         res = pickle.load(f)
-
     gt        = np.exp(-res["test_neglog_gts"])
     pred_ls   = np.exp(-res["train_neglog_est_1"])
     pred_dist = np.exp(-res["train_neglog_est_2"])
     pred_rasch= np.exp(-res["test_neglog_est_3"])
-
-    # 5) Compute MSEs
+    
     mse_ls    = mean_squared_error(gt, pred_ls)
     mse_dist  = mean_squared_error(gt, pred_dist)
     mse_rasch = mean_squared_error(gt, pred_rasch)
-    test_mse.append([mse_ls, mse_dist, mse_rasch])
+    
+    # store
+    results_by_scenario.setdefault(scenario, []).append(
+        (model_name, [mse_ls, mse_dist, mse_rasch])
+    )
 
-# 6) Stack into array and order by strength of model if you like
-arr = np.array(test_mse)
-x = np.arange(len(model_names))
-width = 0.25
+# 3) loop over scenarios and plot
+for scenario, model_data in results_by_scenario.items():
+    # sort by model name (optional)
+    model_data.sort(key=lambda x: x[0])
+    model_names, mse_vals = zip(*model_data)
+    arr = np.array(mse_vals)
+    
+    x = np.arange(len(model_names))
+    width = 0.25
+    
+    with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
+        fig, ax = plt.subplots(figsize=(12, 5))
+        ax.bar(x - width,     arr[:, 0], width=width, label="Least squares",  alpha=0.8)
+        ax.bar(x,             arr[:, 1], width=width, label="Distributional", alpha=0.8)
+        ax.bar(x + width,     arr[:, 2], width=width, label="Rasch",          alpha=0.8)
 
-# 7) Plot
-with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
-    fig, ax = plt.subplots(figsize=(12, 5))
-    ax.bar(x - width,     arr[:, 0], width=width, label="Least squares",  alpha=0.8)
-    ax.bar(x,             arr[:, 1], width=width, label="Distributional", alpha=0.8)
-    ax.bar(x + width,     arr[:, 2], width=width, label="Rasch",          alpha=0.8)
+        ax.set_ylabel("Test MSE", fontsize=16)
+        ax.set_xticks(x)
+        ax.set_xticklabels(model_names, rotation=45, ha="right", fontsize=12)
+        ax.tick_params(axis="both", labelsize=12)
+        ax.legend(fontsize=12, loc="upper right")
+        ax.set_yscale("log")
+        plt.tight_layout()
 
-    ax.set_ylabel("Test MSE", fontsize=16)
-    ax.set_xticks(x)
-    ax.set_xticklabels(model_names, rotation=45, ha="right", fontsize=12)
-    ax.tick_params(axis="both", labelsize=12)
-    ax.legend(fontsize=12, loc="upper right")
-    ax.set_yscale("log")
-    plt.tight_layout()
-
-    # 8) Save
-    out_fname = f"monkey_scaleup_models_{scenario}.png"
-    fig.savefig(out_fname, dpi=300, bbox_inches="tight")
-    plt.close(fig)
+        out_fname = f"/lfs/skampere1/0/sttruong/deval/result/monkey_generalize_scaleup_diff_split/aggregate_fig/monkey_scaleup_models_{scenario}.png"
+        out_dir = os.path.dirname(out_fname)
+        os.makedirs(out_dir, exist_ok=True)
+        fig.savefig(out_fname, dpi=300, bbox_inches="tight")
+        plt.close(fig)

@@ -66,6 +66,9 @@ for scenario_dir in sorted(base_eval_dir.iterdir()):
             rel = src_path.relative_to(input_root)
             dst_path = output_root / rel
             dst_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            if dst_path.exists():
+                continue
 
             try:
                 df = pd.read_parquet(src_path)
