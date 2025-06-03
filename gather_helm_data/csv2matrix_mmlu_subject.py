@@ -12,8 +12,8 @@ if __name__ == "__main__":
 
     # keep useful columns, drop nan rows
     results_full = results_full.sample(frac=1).reset_index(drop=True)
-    results = results_full[["request.model", "input.text", "references", "scenario", "benchmark", "dicho_score"]]
-    results = results.dropna(subset=["request.model", "input.text", "references", "scenario", "benchmark", "dicho_score"])
+    results = results_full[["request.model", "input.text", "references", "scenario", "benchmark", "scenario_spec.args.subject", "dicho_score"]]
+    results = results.dropna(subset=["request.model", "input.text", "references", "scenario", "benchmark", "scenario_spec.args.subject", "dicho_score"])
 
     # drop the dicho_score of 0.5
     results = results[results["dicho_score"] != 0.5]
@@ -21,7 +21,7 @@ if __name__ == "__main__":
     assert results["dicho_score"].isin([0, 1]).all()
 
     # drop duplicate rows
-    results = results.drop_duplicates(subset=["request.model", "input.text", "references", "scenario", "benchmark"], keep='first')
+    results = results.drop_duplicates(subset=["request.model", "input.text", "references", "scenario", "benchmark", "scenario_spec.args.subject"], keep='first')
     print(f"non-duplicate percentage:{results.shape[0]/results_full.shape[0]}")
 
     # Count the number of unique input.text for each request.model
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     ]
 
     # pivot to turn long table into matrix
-    results = results.pivot(index="request.model", columns=["input.text",  "references", "scenario", "benchmark"], values="dicho_score")
+    results = results.pivot(index="request.model", columns=["input.text",  "references", "scenario", "benchmark", "scenario_spec.args.subject"], values="dicho_score")
     # sort the columns by scenario
     results = results.sort_index(axis=1, level="scenario")
 
@@ -54,7 +54,7 @@ if __name__ == "__main__":
     for scenario in results.columns.get_level_values("scenario").unique():
         mask = results.columns.get_level_values("scenario") == scenario
         values = results.loc[:, mask].values  # all values for this scenario
-        scenario_means[scenario] = np.nanmaean(values)
+        scenario_means[scenario] = np.nanmean(values)
 
     # Sort the scenario by their average score
     sorted_scenarios = sorted(scenario_means, key=scenario_means.get)
@@ -75,7 +75,7 @@ if __name__ == "__main__":
     print(f"missing percentage: {results.isna().values.sum() / (results.shape[0] * results.shape[1])}")
     
     # save
-    with open("../data/gather_helm_data/results.pkl", "wb") as f:
+    with open("../data/gather_helm_data/results_mmlu_subject.pkl", "wb") as f:
         pickle.dump(results, f)
 
     output_dir = "../result/gather_helm_data"
