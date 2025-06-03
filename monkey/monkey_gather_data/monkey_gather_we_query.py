@@ -10,18 +10,7 @@ import argparse
 def gather_to_json(
     base_dir: pathlib.Path,
     output_path: pathlib.Path,
-    samples_per_prompt: int = 10000,
 ):
-    """
-    Walk each `prompt=<idx>` subfolder under base_dir,
-    read all batch_*.parquet files, concatenate their
-    'score' columns, cap at samples_per_prompt, and
-    write a list of {"question": str, "is_corrects": [...]} to output_path.
-
-    Skip any prompt folder if:
-      - reading any parquet fails (e.g. zero‐byte file), OR
-      - total scores collected < samples_per_prompt
-    """
     records = []
 
     for prompt_folder in tqdm(sorted(base_dir.glob("prompt=*"))):
@@ -43,15 +32,7 @@ def gather_to_json(
                 df = pd.read_parquet(pq, columns=["score"])
                 scores.extend(df["score"].tolist())
 
-            # skip if not enough samples
-            if len(scores) < samples_per_prompt:
-                print(
-                    f"Only {len(scores)} scores in `{prompt_folder.name}`, skipping."
-                )
-                continue
-
-            # cap at samples_per_prompt and convert to float
-            is_corrects = [float(s) for s in scores[:samples_per_prompt]]
+            is_corrects = [float(s) for s in scores]
 
             records.append({
                 "question": question_text,
