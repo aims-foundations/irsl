@@ -215,7 +215,7 @@ def sample_outputs_from_policy_model_and_write_to_disk(
     # See: https://github.com/vllm-project/vllm/issues/1908
     # Hit it with everything recommended!
     destroy_model_parallel()
-    del model.llm_engine.model_executor.driver_worker
+    # del model.llm_engine.model_executor.driver_worker
     del model
     gc.collect()
     torch.cuda.empty_cache()
