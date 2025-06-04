@@ -59,7 +59,7 @@ if __name__ == "__main__":
                 print(scenario_name)
                 mult_choice_flag = False if scenario_name in ["legalbench", "math", "gsm"] else True
                 
-                with open(f"data/gather_helm_data/responses_monkey_{benchmark_name}.pkl", "rb") as f:
+                with open(f"../../data/gather_helm_data/responses_monkey_{benchmark_name}.pkl", "rb") as f:
                     results_full = pickle.load(f)
                 
                 results_full = results_full.sample(frac=1).reset_index(drop=True)
@@ -157,7 +157,7 @@ if __name__ == "__main__":
                 for col in pre_query.columns:
                     print(f"{col}: {row[col]}\n\n")
                 
-                out_dir = 'data/monkey_query/pre_query'
+                out_dir = '../../data/monkey_query/pre_query'
                 os.makedirs(out_dir, exist_ok=True)
                 safe_model_name = model_name.replace('/', '_')
                 out_path = f"{out_dir}/{safe_model_name}_{scenario_name}_pre_query.pkl"

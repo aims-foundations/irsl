@@ -35,7 +35,7 @@ def generate_outputs_from_model(
     num_samples_per_sampling_call: int=128,
 ):
     policy_model_sampled_outputs_dir = os.path.join(
-        "data/monkey_query/eval_results",
+        "../../data/monkey_query/eval_results",
         dataset,
         model_nickname.split("/")[-1],
     )
