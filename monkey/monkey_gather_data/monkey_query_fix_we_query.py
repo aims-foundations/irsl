@@ -34,9 +34,6 @@ for scenario_dir in sorted(base_eval_dir.iterdir()):
     if not scenario_dir.is_dir():
         continue
     scenario_name = scenario_dir.name
-    
-    if scenario_name != "legal_support":
-        continue
 
     if scenario_name in ["mmlu", "commonsense"]:
         evaluate_fn = exact_match
