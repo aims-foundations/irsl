@@ -54,7 +54,7 @@ if __name__ == "__main__":
     for scenario in results.columns.get_level_values("scenario").unique():
         mask = results.columns.get_level_values("scenario") == scenario
         values = results.loc[:, mask].values  # all values for this scenario
-        scenario_means[scenario] = np.nanmaean(values)
+        scenario_means[scenario] = np.nanmean(values)
 
     # Sort the scenario by their average score
     sorted_scenarios = sorted(scenario_means, key=scenario_means.get)

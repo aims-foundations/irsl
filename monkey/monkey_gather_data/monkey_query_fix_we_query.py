@@ -3,6 +3,8 @@ import pickle
 import pandas as pd
 import pathlib
 from huggingface_hub import snapshot_download
+import sys
+sys.path.append("../monkey_query")
 from pyarrow.lib import ArrowInvalid
 from monkey_query_utils import (
     exact_match,
@@ -14,11 +16,10 @@ model_nickname2helm_model_name = {
     full.split("/")[-1]: helm_name
     for full, helm_name in model_nickname2helm_model_name.items()
 }
-print(model_nickname2helm_model_name)
 
 # Base directories
-base_eval_dir = pathlib.Path("data/monkey_query/eval_results")
-base_fix_dir = pathlib.Path("data/monkey_query/eval_results_fix")
+base_eval_dir = pathlib.Path("../../data/monkey_query/eval_results")
+base_fix_dir = pathlib.Path("../../data/monkey_query/eval_results_fix")
 
 # Download pre-query dataset once for all scenarios
 cache_dir = snapshot_download(
@@ -33,6 +34,9 @@ for scenario_dir in sorted(base_eval_dir.iterdir()):
     if not scenario_dir.is_dir():
         continue
     scenario_name = scenario_dir.name
+    
+    if scenario_name != "legal_support":
+        continue
 
     if scenario_name in ["mmlu", "commonsense"]:
         evaluate_fn = exact_match
@@ -84,5 +88,9 @@ for scenario_dir in sorted(base_eval_dir.iterdir()):
                     lambda row: float(evaluate_fn(row['response'], sol_map[row['prompt_idx']])),
                     axis=1,
                 )
+            if scenario_name == "legal_support":
+                ref_lookup = pre_df.set_index("prompt_index")["instance.references"]
+                mapped_refs = df["prompt_idx"].map(ref_lookup).astype(str)
+                df["problem"] = df["problem"] + mapped_refs
 
             df.to_parquet(dst_path, index=False)

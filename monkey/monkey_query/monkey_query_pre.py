@@ -43,15 +43,13 @@ def get_solution_exact_match(row):
 
 
 if __name__ == "__main__":
-    # model_name = "meta/llama-3-8b"
-    # model_name = 'eleutherai/pythia-6.9b'
-    model_names = ['mistralai/mistral-7b-v0.1', 'deepseek-ai/DeepSeek-R1-Distill-Llama-8B', 'Qwen/Qwen3-8B']
+    model_names = ["meta/llama-3-8b", 'eleutherai/pythia-6.9b', 'mistralai/mistral-7b-v0.1', 'deepseek-ai/DeepSeek-R1-Distill-Llama-8B', 'Qwen/Qwen3-8B']
     for model_name in model_names:
         benchmark_scenarios = {
             # "lite": ["commonsense", "med_qa", "legalbench", "math", "gsm"],
             # "mmlu": ["mmlu"],
             # "classic": ["bbq", "lsat_qa"] # "legal_support",
-            "classic": ["bbq"] # "legal_support", 
+            "classic": ["legal_support"]
         }
 
         for benchmark_name, scenario_list in benchmark_scenarios.items():
@@ -101,7 +99,6 @@ if __name__ == "__main__":
                     (results["benchmark"] == benchmark_name) &
                     (results["scenario"] == scenario_name)
                 ]
-                
                 results["dicho_score"] = results["dicho_score"].astype(int)
                 results = results.groupby(["instance.input.text", "scenario", "benchmark"], observed=False).filter(lambda grp: grp["dicho_score"].nunique() > 1)
                 
@@ -149,7 +146,10 @@ if __name__ == "__main__":
                     
                 # save result
                 pre_query = results.copy()
-                pre_query = pre_query[["instance.input.text", "request.prompt", "solution", "scenario", "benchmark"]]
+                if scenario_name == "legal_support":
+                    pre_query = pre_query[["instance.input.text", "request.prompt", "instance.references", "solution", "scenario", "benchmark"]]
+                else:
+                    pre_query = pre_query[["instance.input.text", "request.prompt", "solution", "scenario", "benchmark"]]
                 pre_query = pre_query.sort_values('instance.input.text').reset_index(drop=True)
                 pre_query['prompt_index'] = range(len(pre_query))
                 print(pre_query.head())

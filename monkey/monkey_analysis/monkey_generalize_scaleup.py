@@ -86,7 +86,7 @@ def linear_func(z, w, b):
 benchmark2scenario = {
     "lite": ["legalbench", "math", "commonsense", "med_qa", "gsm"],
     "mmlu": ["mmlu"],
-    "classic": ["bbq", "lsat_qa"] # , "legal_support"
+    "classic": ["bbq", "lsat_qa", "legal_support"]
 }
 scenario2benchmark = {
     **{
@@ -107,7 +107,7 @@ if __name__ == "__main__":
         repo_id="stair-lab/monkey_queries",
         repo_type="dataset"
     )
-    scenarios = ["mmlu"] # scenario2benchmark.keys()
+    scenarios = ["legal_support"] # scenario2benchmark.keys()
     paths = []
     for scenario in scenarios:
         paths.extend(glob.glob(f"{local_dir}/*{scenario}.json"))
@@ -140,9 +140,16 @@ if __name__ == "__main__":
                     (helm_resmat.columns.get_level_values("scenario")  == scenario_name)
                 ] # filter benchamrk & scenario
         helm_resmat = helm_resmat.dropna(how="all", axis=0) # drop empty rows
+        if scenario_name == "legal_support":
+            cols_df = helm_resmat.columns.to_frame(index=False)
+            cols_df["input.text"] = (
+                cols_df["input.text"].astype(str)
+                + cols_df["references"].astype(str)
+            )
+            helm_resmat.columns = pd.MultiIndex.from_frame(cols_df)
         helm_resmat = helm_resmat.loc[:, ~helm_resmat.columns.get_level_values("input.text").duplicated(keep=False)] # drop duplicate questions
         print(f"helm_resmat.shape: {helm_resmat.shape}")
-
+            
         # get intersect questions
         intersect_mask = helm_resmat.columns.get_level_values("input.text").isin(monkey_questions2iscorrects)
         helm_resmat = helm_resmat.loc[:, intersect_mask]
