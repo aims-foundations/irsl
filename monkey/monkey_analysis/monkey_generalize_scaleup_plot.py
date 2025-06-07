@@ -12,6 +12,7 @@ import seaborn as sns
 
 model_name_map = {
     'meta-llama-Meta-Llama-3-8B-Instruct': 'Meta-Llama-3-8B-Instruct',
+    'meta-llama-Meta-Llama-3-70B': 'Meta-Llama-3-70B-Instruct',
     'pythia-12b': 'Pythia_12B',
     'pythia-6.9b': 'Pythia_6.9B',
 }
