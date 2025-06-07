@@ -99,7 +99,7 @@ scenario2benchmark = {
 }
 
 if __name__ == "__main__":
-    device = "cuda:1"
+    device = "cuda:2"
     B = 50000
     method = "diff_split" # "55randomsplit"
     
@@ -107,19 +107,22 @@ if __name__ == "__main__":
         repo_id="stair-lab/monkey_queries",
         repo_type="dataset"
     )
-    scenarios = ["legal_support"] # scenario2benchmark.keys()
+    scenarios = scenario2benchmark.keys()
     paths = []
     for scenario in scenarios:
         paths.extend(glob.glob(f"{local_dir}/*{scenario}.json"))
 
-    for path in paths:
-        output_dir = f"../../result/monkey_generalize_scaleup_{method}"
-        os.makedirs(output_dir, exist_ok=True)
-        
+    output_dir = f"../../result/monkey_generalize_scaleup_{method}"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    for path in tqdm(paths)   :        
         stem = Path(path).stem # e.g. "pythia-12b_lsat_qa"
-        monkey_model_name, scenario_name = stem.split("_", 1)
+        scenario_name = next((s for s in scenarios if stem.endswith(f"_{s}")), None)
+        monkey_model_name = stem[: -(len(scenario_name) + 1)] # remove "_lsat_qa" from the end to get the model name
         benchmark_name = scenario2benchmark.get(scenario_name)
         print(f"\nmodel={monkey_model_name}, scenario={scenario_name}, benchmark={benchmark_name}")
+        if os.path.exists(f"{output_dir}/nonlog_{monkey_model_name}_{scenario_name}.png"):
+            continue
 
         # load monkey data
         monkey_dataset = pd.read_json(path)

@@ -23,7 +23,7 @@ def infer_column_types(df):
             df[col] = df[col].astype("string").astype("category")
 
 if __name__ == "__main__":
-    benchmark_name = "classic" # "lite" # "mmlu"
+    benchmark_name = "air-bench" # "classic" # "lite" # "mmlu"
     input_dir = "/lfs/skampere1/0/sttruong/reeval/gather_helm_data/helm_jsons"
     BENCHMARKS = [benchmark_name]
     task2metric = lo("task2metric.json")
