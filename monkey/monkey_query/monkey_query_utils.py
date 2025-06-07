@@ -8,6 +8,7 @@ SEED = 42
 model_nickname2helm_model_name = {
     "meta-llama/Meta-Llama-3-8B-Instruct": "meta/llama-3-8b",
     "meta-llama/Meta-Llama-3-70B-Instruct": "meta/llama-3-8b",
+    "meta-llama/Meta-Llama-3-70B": "meta/llama-3-8b",
     "EleutherAI/pythia-6.9b": "eleutherai/pythia-6.9b",
     "EleutherAI/pythia-12b": "eleutherai/pythia-6.9b", # 12b and 6.9b have same context length
     "mistralai/Mistral-7B-v0.1": "mistralai/mistral-7b-v0.1",
