@@ -19,13 +19,13 @@ model_name_map = {
 }
 
 # 1) Define your ordered scenarios and mappings
-ordered_scenarios = ["mmlu"]
-    # "gsm", "mmlu", "lsat_qa", "legalbench",
-    # "bbq", "commonsense", "math", "med_qa", "legal_support"
+ordered_scenarios = ["gsm", "mmlu", "lsat_qa", "legalbench",
+    "bbq", "commonsense", "math", "med_qa", "legal_support"]
+    
 benchmark2scenario = {
-    # "lite":    ["legalbench", "math", "commonsense", "med_qa", "gsm"],
+    "lite":    ["legalbench", "math", "commonsense", "med_qa", "gsm"],
     "mmlu":    ["mmlu"],
-    # "classic": ["bbq", "lsat_qa", "legal_support"]
+    "classic": ["bbq", "lsat_qa", "legal_support"]
 }
 scenario2benchmark = {
     **{
@@ -34,7 +34,6 @@ scenario2benchmark = {
         for scen in scenarios
     },
     # 'harm_bench': 'safety',
-    # 'gsm':        'lite',
 }
 
 # 2) Download all monkey query JSONs
@@ -103,9 +102,8 @@ for scen in ordered_scenarios:
         questions = helm_resmat.columns.get_level_values("input.text").tolist()
         question_sets.append(set(questions))
 
-    common_questions = set.intersection(*question_sets)
+    common_questions = set.union(*question_sets)
     question_texts = sorted(common_questions)
-    breakpoint()
 
     # extract z values from any one model's HELM after filter
     helm_sample = load_and_filter_helm(bench, scen, helm_dir)
@@ -125,6 +123,8 @@ for scen in ordered_scenarios:
         this_model_arr = []
         for q in question_texts:
             arr = np.array(q2correct.get(q, []), dtype=float)
+            # if arr.size == 17920:
+            #     breakpoint()
             this_model_arr.append(arr)
             global_max_samples = max(global_max_samples, arr.size)
 
@@ -150,10 +150,9 @@ for scen in ordered_scenarios:
         "models":      model_list,
         "questions":   question_texts,
     }
-    breakpoint()
 
 # 5) Save each scenario's results
-out_dir = "processed_monkey_data"
+out_dir = "../../data/monkey_3d_tensor"
 os.makedirs(out_dir, exist_ok=True)
 for scen, info in output.items():
     save_path = os.path.join(out_dir, f"{scen}_tensor.pth")
