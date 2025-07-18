@@ -236,11 +236,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dataset",
         type=str,
-        # default="gsm8k",
-        # default="humaneval",
-        # default="math",
-        required=True,
-        # mmlu
+        default="gsm",
+        # required=True,
         help="Dataset to use",
     )
     parser.add_argument(
@@ -253,18 +250,21 @@ if __name__ == "__main__":
         help="Maximum number of tokens to generate",
     )
     parser.add_argument(
-        "--num_prompts_to_use", type=int, default=96, help="Number of prompts to use"
+        "--num_prompts_to_use", type=int, default=997, help="Number of prompts to use"
+        # "--num_prompts_to_use", type=int, default=96, help="Number of prompts to use"
     )
     parser.add_argument(
         "--total_num_samples_per_prompt",
         type=int,
-        default=10000,
+        # default=10000,
+        default=50,
         help="Total number of samples per prompt",
     )
     parser.add_argument(
         "--num_samples_per_sampling_call",
         type=int,
-        default=128,
+        # default=128,
+        default=50,
     )
     args = parser.parse_args()
 
