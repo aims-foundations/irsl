@@ -43,13 +43,13 @@ def get_solution_exact_match(row):
 
 
 if __name__ == "__main__":
-    model_names = ["meta/llama-3-8b", 'eleutherai/pythia-6.9b', 'mistralai/mistral-7b-v0.1', 'deepseek-ai/DeepSeek-R1-Distill-Llama-8B', 'Qwen/Qwen3-8B']
+    model_names = ["meta/llama-3-8b"] # , 'eleutherai/pythia-6.9b', 'mistralai/mistral-7b-v0.1', 'deepseek-ai/DeepSeek-R1-Distill-Llama-8B', 'Qwen/Qwen3-8B']
     for model_name in model_names:
         benchmark_scenarios = {
-            # "lite": ["commonsense", "med_qa", "legalbench", "math", "gsm"],
+            "lite": ["gsm"] # "commonsense", "med_qa", "legalbench", "math", 
             # "mmlu": ["mmlu"],
             # "classic": ["bbq", "lsat_qa"] # "legal_support",
-            "classic": ["legal_support"]
+            # "classic": ["legal_support"]
         }
 
         for benchmark_name, scenario_list in benchmark_scenarios.items():

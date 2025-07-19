@@ -258,15 +258,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--total_num_samples_per_prompt",
         type=int,
-        # default=10000,
-        default=500,
+        default=10000,
+        # default=500,
         help="Total number of samples per prompt",
     )
     parser.add_argument(
         "--num_samples_per_sampling_call",
         type=int,
-        # default=128,
-        default=50,
+        default=256,
+        # default=50,
     )
     args = parser.parse_args()
 
