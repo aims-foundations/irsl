@@ -77,8 +77,10 @@ def sample_outputs_from_policy_model_and_write_to_disk(
         "enable_prefix_caching": True,
         "trust_remote_code": True
     }
-    if model_nickname == "meta-llama/Meta-Llama-3-70B-Instruct":
-        kwargs["tensor_parallel_size"] = 2
+    cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+    if cuda_visible:
+        num_gpus = len(cuda_visible.split(","))
+        kwargs["tensor_parallel_size"] = num_gpus
 
     # Load the model.
     model = LLM(**kwargs)
@@ -257,7 +259,7 @@ if __name__ == "__main__":
         "--total_num_samples_per_prompt",
         type=int,
         # default=10000,
-        default=50,
+        default=500,
         help="Total number of samples per prompt",
     )
     parser.add_argument(
