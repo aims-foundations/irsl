@@ -34,9 +34,14 @@ def gather_to_json(
 
             is_corrects = [float(s) for s in scores]
 
+            # only include questions with at least 500 samples
+            if len(is_corrects) < 500:
+                continue
+
+            # keep the first 500 samples
             records.append({
                 "question": question_text,
-                "is_corrects": is_corrects[:50],
+                "is_corrects": is_corrects[:500],
             })
 
         except ArrowInvalid as e:
