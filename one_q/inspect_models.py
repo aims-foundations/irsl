@@ -1,35 +1,45 @@
 import os
+import json
 import numpy as np
-import torch
 import matplotlib.pyplot as plt
 from huggingface_hub import snapshot_download
 
-# 1. Download and load data
-data_path = snapshot_download(repo_id="stair-lab/monkey_3d_data", repo_type="dataset")
-loaded = torch.load(os.path.join(data_path, "gsm_tensor.pth"), map_location="cpu")
-scores = loaded["data_tensor"]    # shape [M, Q, S]
-models = loaded["models"]         # length M
+# 1. Download all the JSON files from stair-lab/monkey_queries
+data_path = snapshot_download(repo_id="stair-lab/monkey_queries", repo_type="dataset")
 
-M, Q, S = scores.shape
+# 2. Find every *_gsm.json file in the dataset folder
+json_files = [fn for fn in os.listdir(data_path) if fn.endswith("_gsm.json")]
 
-# 2. Set up a single‑column grid
-nrows = M
-fig, axes = plt.subplots(nrows, 1, figsize=(6, nrows * 3), constrained_layout=True)
+models = []
+avg_scores_per_model = []
+
+# 3. Load each JSON, extract & average the 'is_corrects' list per question
+for fn in sorted(json_files):
+    model_name = os.path.splitext(fn)[0]      # e.g. "Qwen3-8B_gsm"
+    if model_name.startswith("Pythia") or model_name.startswith("Mistral"):
+        continue
+    models.append(model_name)
+    with open(os.path.join(data_path, fn), "r") as f:
+        entries = json.load(f)                # list of { "question": ..., "is_corrects": [...] }
+    print(model_name, len(entries))
+    # compute mean correctness per question
+    means = [np.nanmean(item["is_corrects"]) for item in entries]
+    avg_scores_per_model.append(means)
+
+M = len(models)
+
+# 4. Plot one histogram per model in a single‑column figure
+fig, axes = plt.subplots(M, 1, figsize=(6, M * 3), constrained_layout=True)
 axes = axes.flatten()
 
-# 3. Plot one histogram per model using nanmean
-for i in range(M):
-    # compute per‑question average ignoring NaNs
-    # convert to NumPy for np.nanmean
-    arr = scores[i].numpy()     # shape (Q, S)
-    avg_per_question = np.nanmean(arr, axis=1)  # shape (Q,)
-    
+for i, (model, scores) in enumerate(zip(models, avg_scores_per_model)):
     ax = axes[i]
-    ax.hist(avg_per_question, bins=20, edgecolor="black")
-    ax.set_title(models[i], fontsize=10)
-    ax.set_xlabel("Avg probability (over samples, NaNs ignored)")
+    ax.hist(scores, bins=20, edgecolor="black")
+    ax.set_title(model, fontsize=10)
+    ax.set_xlabel("Avg correctness per question")
     ax.set_ylabel("Number of questions")
     ax.set_xlim(0, 1)
 
-# 4. Save figure to file
+# 5. Save the figure
 plt.savefig("model_histograms.png", dpi=300, bbox_inches="tight")
+plt.close(fig)

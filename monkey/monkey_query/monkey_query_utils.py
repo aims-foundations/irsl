@@ -3,6 +3,7 @@ import re
 import string
 from huggingface_hub import snapshot_download
 from typing import Dict, List, Optional
+from datasets import load_dataset
 SEED = 42
 
 model_nickname2helm_model_name = {
@@ -38,6 +39,40 @@ def create_prompts_and_answers(model_nickname, dataset, num_prompts_to_use):
         "solutions":         sampled_df["solution"].tolist()
     }
     return data
+
+def create_prompts_and_answers_zero_shot(dataset: str, num_prompts_to_use: int):
+    if dataset != "gsm":
+        raise ValueError(f"Unsupported dataset '{dataset}'; only 'gsm' is supported.")
+
+    platinum_dataset = load_dataset("madrylab/gsm8k-platinum", "main", split="test")
+    filtered = platinum_dataset.filter(
+        lambda item: item["cleaning_status"] in ["consensus", "verified"]
+    )
+    all_indices = list(range(len(filtered)))
+    
+    # Slice to the first num_prompts_to_use entries (keeping original indices)
+    selected_indices = all_indices[:num_prompts_to_use]
+    subset = filtered.select(selected_indices)
+    problems = subset["question"]
+    base_prompt = (
+        "You are an expert in math. When given a question:\n"
+        "- **Show your work.** Write calculations concisely.\n"
+        "- **End with “The answer is X”.** Replace X with the final numeric answer.\n"
+        "- **Do not include any currency symbols (e.g. “$”) or time suffixes (e.g. “:00 AM”/“:00 PM”) in X.** X must be purely numeric.\n"
+        "- **Do not include commas in X.** Use “70000” instead of “70,000”.\n"
+        "- **Do not output X with decimal places.** Do not use formats like 18.0 or 18.00; use “18” instead.\n"
+        "- **Do not add any content after “The answer is X”.**\n\n"
+        "Now solve this problem: "
+    )
+    prompts = [f"{base_prompt}{q}" for q in problems]
+    solutions = subset["answer"]
+    
+    return {
+        "problems": problems,
+        "problems_indices": selected_indices,
+        "prompts": prompts,
+        "solutions": solutions,
+    }
 
 ## exact_match
 def exact_match(response: str, solution: str) -> float:
@@ -92,6 +127,32 @@ def final_number_exact_match(gold: str, pred: str) -> float:
         return matches[-1].replace(",", "")
 
     return exact_match(get_final_number(gold), get_final_number(pred))
+
+def advanced_gsm_eval(gold: str, pred: str) -> float:
+    """
+    Returns 1 iff the final number in gold and the number in the last
+    "The answer is X." in pred match.
+    Example:
+    - gold = "#### 15."
+    - pred = "Calculation… The answer is 15."
+    - Returns 1
+    """
+
+    def get_final_number(x: str) -> str:
+        matches = re.findall(r"-?[\d,]+(?:.\d+)?", x)
+        if not matches:
+            return ""
+        return matches[-1].replace(",", "")
+
+    def get_pred_number(x: str) -> str:
+        # Extract the number X from the last "The answer is X."
+        matches = re.findall(r"The answer is (-?[\d,]+(?:.\d+)?)", x)
+        return matches[-1].replace(",", "") if matches else ""
+
+    gold_num = get_final_number(gold)
+    pred_num = get_pred_number(pred)
+    return 1.0 if exact_match(gold_num, pred_num) else 0.0
+
 
 ## is_equiv_chain_of_thought
 def last_boxed_only_string(string: str) -> Optional[str]:
