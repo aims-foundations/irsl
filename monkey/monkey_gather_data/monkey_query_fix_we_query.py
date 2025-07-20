@@ -9,7 +9,9 @@ from pyarrow.lib import ArrowInvalid
 from monkey_query_utils import (
     exact_match,
     quasi_exact_match,
-    model_nickname2helm_model_name
+    model_nickname2helm_model_name,
+    final_number_exact_match,
+    is_equiv_chain_of_thought,
 )
 
 model_nickname2helm_model_name = {
@@ -39,8 +41,10 @@ for scenario_dir in sorted(base_eval_dir.iterdir()):
         evaluate_fn = exact_match
     elif scenario_name in ["med_qa", "legalbench", "bbq", "lsat_qa", "legal_support"]:
         evaluate_fn = quasi_exact_match
-    elif scenario_name in ["math", "gsm"]:
-        evaluate_fn = None
+    elif scenario_name == "gsm":
+        evaluate_fn = final_number_exact_match
+    elif scenario_name == "math":
+        evaluate_fn = is_equiv_chain_of_thought
     else:
         print(f"Skipping unknown dataset: {scenario_name}")
         continue
@@ -77,13 +81,12 @@ for scenario_dir in sorted(base_eval_dir.iterdir()):
                 print(f"Skipping `{src_path.parent.name}` due to read error: {e}")
                 continue
             
-            if scenario_name not in ["math", "gsm"]:
-                # Keep only the text before the first newline
-                df['response'] = df['response'].str.split("\n", n=1).str[0]
-                # Recompute the score based on the original solution
-                df['score'] = df.apply(
-                    lambda row: float(evaluate_fn(row['response'], sol_map[row['prompt_idx']])),
-                    axis=1,
+            # Keep only the text before the first newline
+            df['response'] = df['response'].str.split("\n", n=1).str[0]
+            # Recompute the score based on the original solution
+            df['score'] = df.apply(
+                lambda row: float(evaluate_fn(row['response'], sol_map[row['prompt_idx']])),
+                axis=1,
                 )
             if scenario_name == "legal_support":
                 ref_lookup = pre_df.set_index("prompt_index")["instance.references"]
