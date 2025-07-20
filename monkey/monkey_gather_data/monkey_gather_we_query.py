@@ -33,6 +33,9 @@ def gather_to_json(
                 scores.extend(df["score"].tolist())
 
             is_corrects = [float(s) for s in scores]
+            
+            if len(is_corrects) < 10000:
+                continue
 
             records.append({
                 "question": question_text,
