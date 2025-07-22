@@ -2,7 +2,7 @@ from datasets import load_dataset
 from vllm import LLM, SamplingParams
 
 engine_kwargs = {
-    "model": "Qwen/Qwen3-8B",
+    "model": "microsoft/Phi-4-mini-instruct",
     "dtype": "bfloat16",
     "gpu_memory_utilization": 0.95,
     "enable_prefix_caching": True,

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from huggingface_hub import snapshot_download
 
 # 1. Download all the JSON files from stair-lab/monkey_queries
-data_path = snapshot_download(repo_id="stair-lab/monkey_queries", repo_type="dataset")
+data_path = snapshot_download(repo_id="stair-lab/monkey_query_zero_shot", repo_type="dataset")
 
 # 2. Find every *_gsm.json file in the dataset folder
 json_files = [fn for fn in os.listdir(data_path) if fn.endswith("_gsm.json")]
@@ -16,8 +16,6 @@ avg_scores_per_model = []
 # 3. Load each JSON, extract & average the 'is_corrects' list per question
 for fn in sorted(json_files):
     model_name = os.path.splitext(fn)[0]      # e.g. "Qwen3-8B_gsm"
-    if model_name.startswith("Pythia") or model_name.startswith("Mistral"):
-        continue
     models.append(model_name)
     with open(os.path.join(data_path, fn), "r") as f:
         entries = json.load(f)                # list of { "question": ..., "is_corrects": [...] }

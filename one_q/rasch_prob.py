@@ -2,11 +2,9 @@ import os
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch.distributions import Bernoulli
 from torch.optim import LBFGS
 from tqdm import tqdm
 from datasets import load_dataset
-from huggingface_hub import snapshot_download
 
 
 # Compute MSE on train & test
@@ -41,34 +39,11 @@ def trainer(parameters, optim, closure, n_iter=1000, verbose=True):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # 1–5. (Same as before: load, filter, NaN cleanup)
-platinum = load_dataset("madrylab/gsm8k-platinum", "main", split="test")
-filtered_platinum = platinum.filter(lambda item: item["cleaning_status"] in ["consensus", "verified"])
-platinum_qs = set(filtered_platinum["question"])
-
-data_path = snapshot_download(repo_id="stair-lab/monkey_3d_data", repo_type="dataset")
+data_path = "/lfs/skampere1/0/sttruong/deval/data/monkey_3d_tensor_zero_shot/"
 scores = torch.load(os.path.join(data_path, "gsm_tensor.pth"), map_location="cpu")["data_tensor"]  # [M,Q,S]
 models = torch.load(os.path.join(data_path, "gsm_tensor.pth"), map_location="cpu")["models"]
 questions = torch.load(os.path.join(data_path, "gsm_tensor.pth"), map_location="cpu")["questions"]
-
-# Exclude and mask models/questions, drop all-NaN slices (as you had)
-exclude = {"Meta-Llama-3-8B-Instruct","Pythia_6.9B","Meta-Llama-3-70B-Instruct",
-           "gemma-3-27b-it","Mistral-7B-v0.1","Pythia_12B"}
-mask_m = [m not in exclude for m in models]
-scores = scores[mask_m]
-models = [m for m in models if m not in exclude]
-
-mask_q = [q in platinum_qs for q in questions]
-scores = scores[:, mask_q]
-questions = [q for q,k in zip(questions,mask_q) if k]
-
-keep_q = ~torch.all(torch.isnan(scores), dim=(0,2))
-scores = scores[:, keep_q]
-questions = [q for q,k in zip(questions,keep_q) if k]
-
-keep_s = ~torch.all(torch.isnan(scores), dim=(0,1))
-scores = scores[:, :, keep_s]
-
-print("After cleanup:", scores.shape)  # should be [M, Q, S]
+print(scores.shape)  # should be [M, Q, S]
 
 # --- NEW: compute your continuous response matrix [M, Q] ---
 # average over samples (last dim), ignoring NaNs
