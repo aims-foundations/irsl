@@ -15,10 +15,10 @@ platinum_questions = set(valid["question"])
 
 # 2. Download and locate JSON files in your HF dataset
 repo_dir = Path(snapshot_download(
-    repo_id="stair-lab/one_question_less_samples",
+    repo_id="stair-lab/monkey_query_zero_shot",
     repo_type="dataset"
 ))
-json_files = sorted(repo_dir.glob("*.json"))
+json_files = sorted(repo_dir.glob("*gsm.json"))
 
 # 3. Load each model’s records into a DataFrame
 model_dfs = {}
@@ -89,7 +89,7 @@ combined = np.hstack([question_ranks, overall_rank[:, None]])
 
 # e) plot
 labels = [str(i+1) for i in range(num_q)] + ["avg"]
-fig, ax = plt.subplots(figsize=(50, 3))
+fig, ax = plt.subplots(figsize=(150, 3))
 heat = ax.imshow(combined, aspect="auto", vmin=1, vmax=num_models, cmap="viridis")
 
 # annotate each cell
