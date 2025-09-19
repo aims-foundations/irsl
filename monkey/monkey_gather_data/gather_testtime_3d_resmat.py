@@ -7,10 +7,12 @@ import pandas as pd
 import torch
 from huggingface_hub import snapshot_download
 from tqdm import tqdm
+from itertools import chain
+from collections import defaultdict
 
 BENCHMARK2SCENARIO = {
     "lite": ["legalbench", "commonsense", "med_qa"], # "math", "gsm"
-    "mmlu": ["mmlu"],
+    # "mmlu": ["mmlu"],
     "classic": ["bbq", "lsat_qa", "legal_support"],
 }
 SCENARIO2BENCHMARK = {
@@ -23,35 +25,44 @@ SCENARIO2BENCHMARK = {
 SCENARIOS = sorted(SCENARIO2BENCHMARK.keys())
 
 if __name__ == "__main__":
+    max_samples = 10000
+    
     cache_dir = snapshot_download(repo_id="stair-lab/monkey_queries", repo_type="dataset")
     all_paths = []
     for scen in SCENARIOS:
-        all_paths.extend(glob.glob(f"{cache_dir}/*{scen}.json"))
+        for path in glob.glob(f"{cache_dir}/*{scen}.json"):
+            fname = Path(path).name
+            if not fname.startswith("Mistral"):
+                all_paths.append(path)
 
     # build union of all model names
     model_set = set()
     for path in all_paths:
         stem = Path(path).stem
         scen = next((s for s in SCENARIOS if stem.endswith(f"_{s}")), None)
-        model = stem.split(f"_{scen}.json")[0]
+        model = stem.split(f"_{scen}")[0]
         model_set.add(model)
     model_names = sorted(model_set)
     n_models = len(model_names)
     print(n_models, model_names)
 
-    # build union of all (benchmark, scenario, prompt) pairs
-    qpairs = set()
-    max_samples = 0
-    for path in all_paths:
-        stem = Path(path).stem
-        scen = next((s for s in SCENARIOS if stem.endswith(f"_{s}")), None)
+    # build intersection of all (benchmark, scenario, prompt) pairs
+    qpairs = []
+    for scen in SCENARIOS:
         bench = SCENARIO2BENCHMARK[scen]
-        df_monkey = pd.read_json(path)
-        qs = df_monkey["question"].tolist()
-        for q in qs:
-            qpairs.add((bench, scen, q))
-        max_samples = max(max_samples, len(df_monkey["is_corrects"].tolist()))
-    qpairs = sorted(qpairs)
+        scen_paths = [p for p in all_paths if Path(p).stem.endswith(f"_{scen}")]
+        common_qs = None
+        for path in scen_paths:
+            df = pd.read_json(path)
+            qs = {
+                q for q, rs in zip(df["question"].tolist(), df["is_corrects"].tolist())
+                if rs
+            }
+            common_qs = qs if common_qs is None else (common_qs & qs)
+            if not common_qs:
+                break  # early exit if intersection becomes empty
+        if common_qs:
+            qpairs.extend((bench, scen, q) for q in sorted(common_qs))
     
     # load z from helm_resmat
     with open("/lfs/skampere1/0/sttruong/deval/data/gather_helm_data/results_with_z.pkl", "rb") as f:
@@ -71,12 +82,15 @@ if __name__ == "__main__":
             mask &= (helm_qs == q)
         matched_z = helm_zs[mask]
         if len(matched_z) >= 1:
-            qpairs_with_zs.add((bench, scen, q, matched_z.mean()))
+            qpairs_with_zs.add((bench, scen, q, np.mean(matched_z.to_numpy())))
+            if len(matched_z) > 1:
+                print("warning, avg z")
         else:
             continue
     qpairs_with_zs = sorted(qpairs_with_zs)
     n_questions = len(qpairs_with_zs)
     print(n_questions)
+    print(max_samples)
     
     # allocate 3D array filled with NaN
     data_tensor = np.full(
@@ -87,29 +101,22 @@ if __name__ == "__main__":
 
     # fill in scores
     output_benchs, output_scens, output_qs, output_zs = [], [], [], []
-    for i, m in tqdm(enumerate(model_names)):
+    for i, m in tqdm(enumerate(model_names), total=n_models):
         for j, (bench, scen, q, z) in enumerate(qpairs_with_zs):
+            if i == 0:
+                output_benchs.append(bench)
+                output_scens.append(scen)
+                output_qs.append(q)
+                output_zs.append(z)
             path = f"{cache_dir}/{m}_{scen}.json"
             df_monkey = pd.read_json(path)
-            scores = df_monkey.loc[df_monkey["question"] == q, "is_corrects"].to_numpy()
-            L = len(scores)
-            if L > 0:
-                data_tensor[i, j, :L] = scores
-            output_benchs.append(bench)
-            output_scens.append(scen)
-            output_qs.append(q)
-            output_zs.append(z)
-    
-    print(f"shape {data_tensor.shape}")
-    total_elements = np.prod(data_tensor.shape)
-    nan_count = np.isnan(data_tensor).sum()
-    nan_percentage = (nan_count / total_elements) * 100
-    print(f"NaN percentage: {nan_percentage:.2f}%, NaN count: {nan_count}")
-    
-    scenarios_unique = sorted(set(output_scens))
-    for scen in scenarios_unique:
-        idxs = [j for j, s in enumerate(output_scens) if s == scen]
-        print(f"{scen}: shape = (n_models={n_models}, n_questions={len(idxs)}, max_samples={max_samples})")
+            rows = df_monkey.loc[df_monkey["question"] == q, "is_corrects"].tolist()
+            if rows:
+                flat = list(chain.from_iterable(rows))   
+                L = min(len(flat), max_samples)
+                if L > 0:
+                    data_tensor[i, j, :L] = np.asarray(flat[:L], dtype=float)
+    assert len(output_benchs) == len(output_scens) == len(output_qs) == len(output_zs) == n_questions
         
     # save to disk
     out_path = Path("../../data/testtime_resmat1.pt")
@@ -121,7 +128,20 @@ if __name__ == "__main__":
         "questions": output_qs,
         "zs": output_zs
     }, out_path)
-
+    
+    # inspect data
+    print(f"shape {data_tensor.shape}")
+    total_elements = np.prod(data_tensor.shape)
+    nan_count = np.isnan(data_tensor).sum()
+    nan_percentage = (nan_count / total_elements) * 100
+    print(f"NaN percentage: {nan_percentage:.2f}%, NaN count: {nan_count}")
+    scenarios_unique = sorted(set(output_scens))
+    for scen in scenarios_unique:
+        idxs = [j for j, s in enumerate(output_scens) if s == scen]
+        sub = data_tensor[:, idxs, :]
+        print(f"{scen}: shape = {sub.shape}")
+    
+    # upload to HF
     login()
     api = HfApi()
     api.upload_file(
