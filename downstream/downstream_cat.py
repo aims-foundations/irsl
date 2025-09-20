@@ -88,7 +88,6 @@ if __name__ == "__main__":
                     plt.close()
 
                 # irt theta on subset questions
-                thetass = [None] * ys.shape[0]
                 def _run_one(i):
                     return cat(ys[i], zs, device, budget)
                 thetass = Parallel(n_jobs=max_workers)(delayed(_run_one)(i) for i in tqdm(range(ys.shape[0])))
