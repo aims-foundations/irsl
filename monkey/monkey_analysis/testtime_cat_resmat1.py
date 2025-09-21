@@ -99,10 +99,10 @@ def cat_beta(ys, zs, device, budget):
 
 if __name__ == "__main__":
     device = "cpu"
-    item_budget = 60
+    item_budget = 70
     sample_budget = 100
     max_workers = 16
-    # test llms: ['Qwen3-32B', 'Qwen3-8B', 'gemma-3-27b-it', 'pythia-12b', 'pythia-6.9b']
+    # test llms: ['Qwen3-14B', 'Qwen3-32B', 'Qwen3-8B', 'gemma-3-27b-it']
     
     testtime_resmat1 = torch.load(f"irsl_testtime_resmat1_withz_betareg.pt", map_location="cpu", weights_only=False)
     data_tensor = testtime_resmat1["data_tensor"].numpy()

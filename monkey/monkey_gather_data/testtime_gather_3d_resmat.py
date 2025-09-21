@@ -65,7 +65,7 @@ if __name__ == "__main__":
             qpairs.extend((bench, scen, q) for q in sorted(common_qs))
     
     # load z from helm_resmat
-    with open("/lfs/skampere1/0/sttruong/deval/data/gather_helm_data/results_with_z.pkl", "rb") as f:
+    with open(f"{cache_dir}/results_with_z.pkl", "rb") as f:
         helm_resmat = pickle.load(f)
     cols = helm_resmat.columns
     helm_benchs = cols.get_level_values("benchmark")

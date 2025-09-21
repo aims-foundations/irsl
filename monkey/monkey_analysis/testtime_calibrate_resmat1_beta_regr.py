@@ -50,7 +50,7 @@ if __name__ == "__main__":
     B = 50000
     n_thetas_nuisance = 150
     device = "cuda:7"
-    N_MODELS_FOR_PROP = 5
+    N_MODELS_FOR_PROP = 4
     N_SAMPLES_FOR_PROP = 300
     eps = 1e-6
 
