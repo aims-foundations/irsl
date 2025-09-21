@@ -32,7 +32,7 @@ if __name__ == "__main__":
     for scen in SCENARIOS:
         for path in glob.glob(f"{cache_dir}/*{scen}.json"):
             fname = Path(path).name
-            if not fname.startswith("Mistral"):
+            if not (fname.startswith("Mistral") or fname.startswith("pythia")):
                 all_paths.append(path)
 
     # build union of all model names
