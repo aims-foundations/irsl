@@ -37,8 +37,8 @@ def infer_column_types(df):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    # parser.add_argument("--repo_id", type=str, required=True)
-    parser.add_argument("--repo_id", type=str, default="LLM360/Amber")
+    parser.add_argument("--repo_id", type=str, required=True)
+    # parser.add_argument("--repo_id", type=str, default="LLM360/Amber")
     # EleutherAI/pythia-12b, EleutherAI/pythia-6.9b, EleutherAI/pythia-2.8b
     # EleutherAI/pythia-1.4b, EleutherAI/pythia-1b, EleutherAI/pythia-410m
     # EleutherAI/pythia-160m, EleutherAI/pythia-70m, EleutherAI/pythia-14m
@@ -47,7 +47,7 @@ if __name__ == "__main__":
     # HuggingFaceTB/SmolLM2-360M-intermediate-checkpoints
     # HuggingFaceTB/SmolLM2-135M-intermediate-checkpoints
     # parser.add_argument("--benchmark_dir", type=str, required=True)
-    parser.add_argument("--benchmark_dir", type=str, default="/lfs/skampere2/0/sttruong/helm/src/benchmark_output/runs")
+    parser.add_argument("--benchmark_dir", type=str, default="../../helm/src/benchmark_output/runs")
     # /lfs/skampere1/0/yuhengtu/deval/helm/src/benchmark_output/runs
     # /lfs/skampere1/0/sttruong/helm/src/benchmark_output/runs
     # /lfs/skampere2/0/sttruong/helm/src/benchmark_output/runs
@@ -151,11 +151,11 @@ if __name__ == "__main__":
     save_path = f"{output_dir}/responses_{model_name}_{parts[4]}_{parts[2]}.pkl"
     results.to_pickle(save_path)
     
-    login()
+    login("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")
     api = HfApi()
     api.upload_file(
         path_or_fileobj=save_path,
-        path_in_repo=f"long/{save_path.split("/")[-1]}",
-        repo_id="stair-lab/irsl_downstream_resmat1",
+        path_in_repo=f"{save_path.split('/')[-1]}",
+        repo_id="stair-lab/irsl_downstream_resmat1_fullinfo",
         repo_type="dataset",
     )

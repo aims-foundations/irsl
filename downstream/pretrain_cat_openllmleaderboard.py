@@ -113,7 +113,7 @@ DATASETS = ["mmlu_anatomy", "arc_challenge", "hellaswag", "mmlu_abstract_algebra
 
 if __name__ == "__main__":
     device = "cpu"
-    budget = 50
+    budget = 200
     results_dict = defaultdict(lambda: defaultdict(dict))
     for dataset in DATASETS:
         dataset_temp = "mmlu" if dataset.startswith("mmlu") else dataset
@@ -188,7 +188,7 @@ if __name__ == "__main__":
                 ax2.tick_params(axis='y', labelcolor='tab:red', labelsize=16)
                 lines1, labels1 = ax1.get_legend_handles_labels()
                 lines2, labels2 = ax2.get_legend_handles_labels()
-                ax1.legend(lines1 + lines2, labels1 + labels2, fontsize=16)
+                ax1.legend(lines1 + lines2, labels1 + labels2, fontsize=10)
                 plt.tight_layout()
                 plt.savefig(f"{output_dir}/law_curve.png", dpi=300, bbox_inches="tight")
                 plt.close()
