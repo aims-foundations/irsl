@@ -14,8 +14,8 @@ def backtest_krr(x, y, A):
     kr.fit(x_tr, y_tr_gt)
     y_tr_pred = kr.predict(x_tr)
     y_te_pred = kr.predict(x_te)
-    train_mae = mean_absolute_error(y_tr_pred, y_tr_gt) / (np.mean(np.abs(y - np.mean(y))))
-    test_mae = mean_absolute_error(y_te_pred, y_te_gt) / (np.mean(np.abs(y - np.mean(y))))
+    train_mae = mean_absolute_error(y_tr_pred, y_tr_gt) / np.std(y)
+    test_mae = mean_absolute_error(y_te_pred, y_te_gt) / np.std(y)
     return (train_mae, test_mae)
 
 def total_variance(a):

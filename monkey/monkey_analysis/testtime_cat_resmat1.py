@@ -7,7 +7,9 @@ torch.manual_seed(0)
 torch.set_num_threads(1)
 from tqdm import tqdm
 from joblib import Parallel, delayed
-from testtime_calibrate_resmat1_beta_regr import beta_nll
+import sys
+sys.path.append("../..")
+from utils import beta_nll
 from tueplots import bundles
 bundles.icml2024()
 from huggingface_hub import snapshot_download

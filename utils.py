@@ -6,6 +6,16 @@ from tqdm import tqdm
 import torch
 torch.manual_seed(0)
 
+def beta_nll(y, mu, phi):
+    """
+    Elementwise negative log-likelihood for Beta(y | a=mu*phi, b=(1-mu)*phi).
+    y, mu in (0,1); phi > 0. Broadcasts over inputs.
+    """
+    a = mu * phi
+    b = (1.0 - mu) * phi
+    return -((a - 1) * torch.log(y) + (b - 1) * torch.log1p(-y)
+             - (torch.lgamma(a) + torch.lgamma(b) - torch.lgamma(a + b)))
+    
 def visualize_response_matrix(results, value, filename):
     # Extract the groups labels in the order of the columns
     group_values = results.columns.get_level_values("scenario")

@@ -4,6 +4,7 @@ torch.set_num_threads(1)
 from tqdm import tqdm
 import sys
 sys.path.append("../..")
+from utils import beta_nll
 from tueplots import bundles
 bundles.icml2024()
 from huggingface_hub import snapshot_download
@@ -15,7 +16,6 @@ def trainer(parameters, optim, closure, n_iter=100, verbose=True):
     pbar = tqdm(range(n_iter)) if verbose else range(n_iter)
     for iteration in pbar:
         if iteration > 0:
-            # Clone each tensor individually for previous state
             previous_parameters = [p.clone() for p in parameters]
             previous_loss = loss.clone()
         
@@ -35,16 +35,6 @@ def trainer(parameters, optim, closure, n_iter=100, verbose=True):
                 break
             
     return parameters
-
-def beta_nll(y, mu, phi):
-    """
-    Elementwise negative log-likelihood for Beta(y | a=mu*phi, b=(1-mu)*phi).
-    y, mu in (0,1); phi > 0. Broadcasts over inputs.
-    """
-    a = mu * phi
-    b = (1.0 - mu) * phi
-    return -((a - 1) * torch.log(y) + (b - 1) * torch.log1p(-y)
-             - (torch.lgamma(a) + torch.lgamma(b) - torch.lgamma(a + b)))
     
 if __name__ == "__main__":
     B = 50000
