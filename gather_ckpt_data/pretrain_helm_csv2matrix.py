@@ -30,6 +30,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     model_name = args.repo_id.split("/")[1]
     
+    parts = os.path.abspath(args.benchmark_dir).split("/")
     with open(f"../data/pretrain_helm/responses_{model_name}_{parts[4]}_{parts[2]}.pkl", "rb") as f:
         results_full = pickle.load(f)
 
