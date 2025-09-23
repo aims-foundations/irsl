@@ -7,7 +7,9 @@ torch.manual_seed(0)
 torch.set_num_threads(1)
 from tqdm import tqdm
 from joblib import Parallel, delayed
-from testtime_calibrate_resmat2_beta_regr import beta_nll
+import sys
+sys.path.append("../..")
+from utils import cat_beta_1pl
 from tueplots import bundles
 bundles.icml2024()
 from huggingface_hub import snapshot_download
@@ -15,87 +17,6 @@ from scipy.stats import spearmanr
 from matplotlib import gridspec
 import warnings
 warnings.filterwarnings("ignore")
-
-def compute_pass_iatk_gt(n: int, c: int, k: int) -> float:
-    if n - c < k:
-        return 1.0
-    return 1.0 - np.prod(1.0 - k / np.arange(n - c + 1, n + 1))
-
-def compute_pass_datk_gts(data2d: np.ndarray) -> np.ndarray:
-    n_items, n_samples = data2d.shape
-    k_range = np.arange(1, n_samples + 1)
-    per_item = []
-    for i in range(n_items):
-        arr = data2d[i]
-        valid = ~np.isnan(arr) # if data2d is torch.tensor, this line return a list of 255
-        n = int(valid.sum())
-        c = int(np.nansum(arr))
-        per_item.append([
-            compute_pass_iatk_gt(n, c, k)
-            for k in k_range
-        ])
-    return np.nanmean(np.vstack(per_item), axis=0)
-
-def compute_pass_iatk_irt(pass_iat1: float, k: int) -> float:
-    return 1.0 - (1.0 - pass_iat1) ** k
-
-def compute_pass_datk_irt(data2d: np.ndarray, irt_probs: np.ndarray) -> np.ndarray:
-    n_items, n_samples = data2d.shape
-    assert n_items == irt_probs.shape[0]
-    k_range = np.arange(1, n_samples + 1)
-    per_item = []
-    for i in range(n_items):
-        per_item.append([
-            compute_pass_iatk_irt(irt_probs[i], k)
-            for k in k_range
-        ])
-    return np.nanmean(np.vstack(per_item), axis=0)
-
-def estimate_theta_beta(theta, asked_ys, asked_zs, device, phi=10.0, eps=1e-6):
-    asked_ys = torch.as_tensor(asked_ys, device=device, dtype=torch.float)
-    asked_zs = torch.as_tensor(asked_zs, device=device, dtype=torch.float)
-    asked_ys = asked_ys.clamp(min=eps, max=1.0 - eps)
-    theta = theta.clone().requires_grad_(True)
-    optim = torch.optim.LBFGS([theta], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
-    phi_t = torch.as_tensor(phi, device=device, dtype=torch.float)
-    def closure():
-        optim.zero_grad()
-        mu = torch.sigmoid(theta + asked_zs)
-        mu = mu.clamp(min=eps, max=1.0 - eps)
-        loss = beta_nll(asked_ys, mu, phi_t).mean()
-        loss.backward()
-        return loss
-    prev_loss = None
-    for _ in range(100):
-        loss = optim.step(closure)
-        if prev_loss is not None and abs(prev_loss.item() - loss.item()) < 1e-5:
-            break
-        prev_loss = loss
-    return theta.detach()
-
-# def compute_fisher_info(theta, remain_zs):
-#     p = torch.sigmoid(theta[:, None] + remain_zs[None, :])
-#     return p * (1 - p)
-
-def cat_beta(ys, zs, device, budget):
-    adaptive_theta_hat = torch.zeros((1,), device=device)
-    adaptive_theta_hats = [adaptive_theta_hat]
-    adaptive_asked_zs = []
-    adaptive_asked_ys = []
-    remain_zs = zs.clone()
-    remain_ys = ys.clone()
-    for _ in range(budget):
-        # fisher_info = compute_fisher_info(adaptive_theta_hat, remain_zs)
-        # next_item = torch.argmax(fisher_info)
-        next_item = torch.argmin(abs(adaptive_theta_hat + remain_zs))
-        adaptive_asked_zs.append(remain_zs[next_item])
-        adaptive_asked_ys.append(remain_ys[next_item])
-        adaptive_theta_hat = estimate_theta_beta(adaptive_theta_hat, adaptive_asked_ys, adaptive_asked_zs, device)
-        adaptive_theta_hats.append(adaptive_theta_hat)
-        remain_zs = torch.cat([remain_zs[:next_item], remain_zs[next_item + 1:]])
-        remain_ys = torch.cat([remain_ys[:next_item], remain_ys[next_item + 1:]])
-    
-    return torch.tensor(adaptive_theta_hats, dtype=torch.float, device=device)
 
 if __name__ == "__main__":
     device = "cpu"

@@ -56,8 +56,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     task2metric = lo("task2metric.json")
     task2metric = pd.json_normalize(task2metric)
-    # BENCHMARKS = ["classic", "mmlu", "lite"]
-    BENCHMARKS = ["classic"]
+    BENCHMARKS = ["classic", "mmlu", "lite"]
+    # BENCHMARKS = ["classic"]
     model_name = args.repo_id.split("/")[1]
     
     all_paths = []
@@ -69,7 +69,7 @@ if __name__ == "__main__":
                 subdirs = [
                     sub for sub in os.listdir(full_d_path)
                     if os.path.isdir(f"{full_d_path}/{sub}")
-                    and sub.startswith(("entity_matching", "legal_support", "raft", "civil_comments", "boolq", "imdb"))
+                    # and sub.startswith(("entity_matching", "legal_support", "raft", "civil_comments", "boolq", "imdb"))
                 ]
                 all_paths.extend([f"{full_d_path}/{sub}" for sub in subdirs])
     files = ["display_requests.json", "display_predictions.json", "run_spec.json", "instances.json", "per_instance_stats.json"]
@@ -147,7 +147,7 @@ if __name__ == "__main__":
     print("Started saving results")
     output_dir = "../data/pretrain_helm"
     os.makedirs(output_dir, exist_ok=True)
-    parts = args.benchmark_dir.split("/")
+    parts = os.path.abspath(args.benchmark_dir).split("/")
     save_path = f"{output_dir}/responses_{model_name}_{parts[4]}_{parts[2]}.pkl"
     results.to_pickle(save_path)
     
@@ -155,7 +155,7 @@ if __name__ == "__main__":
     api = HfApi()
     api.upload_file(
         path_or_fileobj=save_path,
-        path_in_repo=f"{save_path.split('/')[-1]}",
+        path_in_repo=f"long/{save_path.split('/')[-1]}",
         repo_id="stair-lab/irsl_downstream_resmat1_fullinfo",
         repo_type="dataset",
     )

@@ -7,8 +7,7 @@ import sys
 sys.path.append("..")
 from utils import visualize_response_matrix
 import json
-from huggingface_hub import HfApi, login
-from huggingface_hub import hf_hub_download
+from huggingface_hub import HfApi, login, hf_hub_download
 
 def stats_to_logprob(stats):
     stats = json.loads(stats)
@@ -30,7 +29,6 @@ if __name__ == "__main__":
     # /lfs/skampere2/0/sttruong/helm/src/benchmark_output/runs
     args = parser.parse_args()
     model_name = args.repo_id.split("/")[1]
-    parts = os.path.abspath(args.benchmark_dir).split("/")
     
     with open(f"../data/pretrain_helm/responses_{model_name}_{parts[4]}_{parts[2]}.pkl", "rb") as f:
         results_full = pickle.load(f)
@@ -59,7 +57,7 @@ if __name__ == "__main__":
     # results = results.pivot(index="request.model", columns=["input.text",  "references", "scenario", "benchmark"], values="dicho_score")
     logprobs = results["stats"].map(stats_to_logprob)
     probs = np.exp(logprobs)
-    results["prob"] = np.where(results["dicho_score"].eq(1), probs, 1.0 - probs)
+    results["prob"] = probs
     results = results.pivot(index="request.model", columns=["input.text",  "references", "scenario", "benchmark"], values="prob")
     
     # Reindex the DataFrame according to the step order
@@ -95,7 +93,7 @@ if __name__ == "__main__":
     
     # prompt to z
     file_path = hf_hub_download(
-        repo_id="stair-lab/irsl_downstream_resmat1",
+        repo_id="stair-lab/irsl_downstream_resmat1_fullinfo",
         repo_type="dataset",
         filename="input_to_z.json"
     )
@@ -116,8 +114,8 @@ if __name__ == "__main__":
     api = HfApi()
     api.upload_file(
         path_or_fileobj=save_path,
-        path_in_repo=f"resmat/{save_path.split('/')[-1]}",
-        repo_id="stair-lab/irsl_downstream_resmat1",
+        path_in_repo=f"{save_path.split('/')[-1]}",
+        repo_id="stair-lab/irsl_downstream_resmat1_prob",
         repo_type="dataset",
     )
 

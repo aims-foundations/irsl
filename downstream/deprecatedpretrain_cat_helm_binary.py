@@ -17,65 +17,6 @@ from huggingface_hub import snapshot_download
 from torch.distributions import Bernoulli
 import logging
 
-def estimate_theta(theta, asked_ys, asked_zs, device):
-    def closure():
-        optim.zero_grad()
-        probs = torch.sigmoid(theta[:, None] + asked_zs[None, :])
-        loss = -Bernoulli(probs=probs).log_prob(asked_ys).mean()
-        loss.backward()
-        return loss
-
-    asked_ys = torch.tensor(asked_ys, device=device)
-    asked_zs = torch.tensor(asked_zs, device=device)
-    theta = theta.clone().requires_grad_(True)
-    optim = torch.optim.LBFGS([theta], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
-    
-    for iteration in range(100):
-        if iteration > 0:
-            previous_theta = theta.clone()
-            previous_loss = loss.clone()
-        
-        loss = optim.step(closure)
-        
-        if iteration > 0:
-            d_loss = previous_loss - loss
-            d_theta = torch.norm(previous_theta - theta, p=2)
-            grad_norm = torch.norm(optim.param_groups[0]["params"][0].grad, p=2)
-            if d_loss < 1e-5 and d_theta < 1e-5 and grad_norm < 1e-5:
-                break
-    
-    return theta.detach()
-
-# def compute_fisher_info(theta, remain_zs):
-#     p = torch.sigmoid(theta[:, None] + remain_zs[None, :])
-#     return p * (1 - p)
-
-def cat(ys, zs, device, budget):
-    adaptive_theta_hat = torch.zeros((1,), device=device)
-    adaptive_theta_hats = [adaptive_theta_hat]
-    adaptive_asked_zs = []
-    adaptive_asked_ys = []
-    remain_zs = zs.clone()
-    remain_ys = ys.clone()
-    
-    asked = 0
-    while asked < budget and remain_zs.numel() > 0:
-        next_item = torch.argmin(abs(adaptive_theta_hat + remain_zs))
-        y_val = remain_ys[next_item]
-        z_val = remain_zs[next_item]
-        remain_zs = torch.cat([remain_zs[:next_item], remain_zs[next_item + 1:]])
-        remain_ys = torch.cat([remain_ys[:next_item], remain_ys[next_item + 1:]])
-        if torch.isnan(y_val):
-            continue
-        adaptive_asked_ys.append(y_val)
-        adaptive_asked_zs.append(z_val)
-        adaptive_theta_hat = estimate_theta(
-            adaptive_theta_hat, adaptive_asked_ys, adaptive_asked_zs, device
-        )
-        adaptive_theta_hats.append(adaptive_theta_hat)
-        asked += 1
-    return torch.tensor(adaptive_theta_hats, dtype=torch.float, device=device)
-
 REPO_IDS = [
         "EleutherAI/pythia-12b",
         "EleutherAI/pythia-6.9b",
