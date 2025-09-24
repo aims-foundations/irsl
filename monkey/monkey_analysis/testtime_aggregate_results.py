@@ -8,8 +8,8 @@ from tueplots import bundles
 bundles.icml2024()
 
 if __name__ == "__main__":
-    # FILE_NAME = "irsl_testtime_resmat1"
-    FILE_NAME = "irsl_testtime_resmat2"
+    FILE_NAME = "irsl_testtime_resmat1"
+    # FILE_NAME = "irsl_testtime_resmat2"
 
     testtime_resmat = torch.load(f"{FILE_NAME}_withz.pt", map_location="cpu")
     model_names = list(testtime_resmat["models"])          # all models
@@ -20,6 +20,22 @@ if __name__ == "__main__":
     with open(f"{FILE_NAME}_result.pkl", "rb") as f:
         results_dict = pickle.load(f)
 
+    # average rho
+    train_corrs = []
+    test_corrs  = []
+    for scen in datasets:
+        scen_dict = results_dict[scen]
+        for model in model_names:
+            rho = results_dict[scen][model]["irtprob_corr_passat1"]
+            if model in train_model_names:
+                train_corrs.append(rho)
+            else:
+                test_corrs.append(rho)
+    train_avg = np.mean(train_corrs)
+    test_avg  = np.mean(test_corrs)
+    print(f"[irtprob_corr_passat1] Train avg: {train_avg:.4f}")
+    print(f"[irtprob_corr_passat1] Test  avg: {test_avg:.4f}")
+    
     # heatmap
     diffs = {}
     for scen in datasets:

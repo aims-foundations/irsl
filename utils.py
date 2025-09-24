@@ -33,10 +33,8 @@ def compute_pass_datk_gts(data2d: np.ndarray) -> np.ndarray:
 def compute_pass_iatk_irt(pass_iat1: float, k: int) -> float:
     return 1.0 - (1.0 - pass_iat1) ** k
 
-def compute_pass_datk_irt(data2d: np.ndarray, irt_probs: np.ndarray) -> np.ndarray:
-    breakpoint()
-    n_items, n_samples = data2d.shape
-    assert n_items == irt_probs.shape[0]
+def compute_pass_datk_irt(irt_probs: np.ndarray, n_samples) -> np.ndarray:
+    n_items = irt_probs.shape[0]
     k_range = np.arange(1, n_samples + 1)
     per_item = []
     for i in range(n_items):
@@ -191,31 +189,31 @@ def _cat_core(ys, zs, device, estimator_fn, select_next_fn, discris=None, budget
     return thetas
 
 
-def cat_beta_1pl(ys, zs, device):
+def cat_beta_1pl(ys, zs, device, budget=50):
     return _cat_core(
         ys=ys, zs=zs, device=device,
-        estimator_fn=_est_wrap_beta_1pl, select_next_fn=_select_next_1pl, discris=None
+        estimator_fn=_est_wrap_beta_1pl, select_next_fn=_select_next_1pl, discris=None, budget=budget
     )
 
 
-def cat_beta_2pl(ys, discris, zs, device):
+def cat_beta_2pl(ys, discris, zs, device, budget=50):
     return _cat_core(
         ys=ys, zs=zs, device=device,
-        estimator_fn=_est_wrap_beta_2pl, select_next_fn=_select_next_2pl, discris=discris
+        estimator_fn=_est_wrap_beta_2pl, select_next_fn=_select_next_2pl, discris=discris, budget=budget
     )
 
 
-def cat_binary_1pl(ys, zs, device):
+def cat_binary_1pl(ys, zs, device, budget=50):
     return _cat_core(
         ys=ys, zs=zs, device=device,
-        estimator_fn=_est_wrap_binary_1pl, select_next_fn=_select_next_1pl, discris=None
+        estimator_fn=_est_wrap_binary_1pl, select_next_fn=_select_next_1pl, discris=None, budget=budget
     )
 
 
-def cat_binary_2pl(ys, discris, zs, device):
+def cat_binary_2pl(ys, discris, zs, device, budget=50):
     return _cat_core(
         ys=ys, zs=zs, device=device,
-        estimator_fn=_est_wrap_binary_2pl, select_next_fn=_select_next_2pl, discris=discris
+        estimator_fn=_est_wrap_binary_2pl, select_next_fn=_select_next_2pl, discris=discris, budget=budget
     )
     
 

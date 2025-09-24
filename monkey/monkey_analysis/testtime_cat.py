@@ -68,15 +68,15 @@ if __name__ == "__main__":
             spearman_corr, _ = spearmanr(scen_zs, scen_helm_zs)
             with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
                 plt.figure(figsize=(6, 6))
-                plt.scatter(scen_zs.numpy(), scen_helm_zs, s=10, alpha=0.6)
-                plt.xlabel("zs", fontsize=16)
-                plt.ylabel("helm_zs", fontsize=16)
+                plt.scatter(scen_zs.numpy(), scen_helm_zs, s=10)
+                plt.xlabel(r"Our $z$", fontsize=16)
+                plt.ylabel(r"$z$ from REEval", fontsize=16)
                 plt.title(rf"{scen}: $\rho$={spearman_corr:.2f}", fontsize=20)
                 plt.tick_params(axis="both", labelsize=14)
                 plt.tight_layout()
                 plt.savefig(f"{output_dir}/zs_vs_helmzs.png", dpi=300, bbox_inches="tight")
                 plt.close()
-        
+                
         # binary-irt cat on binarymat
         def _run_one_binary(i):
             return cat_binary_1pl(scen_binarymat[i], scen_zs, device, budget=item_budget)
@@ -136,7 +136,7 @@ if __name__ == "__main__":
                 ax_scatter.plot([0, 1], [0, 1], linestyle="--", linewidth=1, color="black")
                 ax_scatter.set_xlim(0, 1)
                 ax_scatter.set_ylim(0, 1)
-                ax_scatter.set_xlabel(r"$\sigma(\theta+z)$", fontsize=18)
+                ax_scatter.set_xlabel("IRT Probability", fontsize=18)
                 ax_scatter.set_ylabel("pass@1", fontsize=18)
                 ax_scatter.tick_params(axis="both", labelsize=14)
                 # ---- left marginal (y) ----
