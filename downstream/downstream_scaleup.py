@@ -7,6 +7,7 @@ from collections import defaultdict
 import numpy as np
 from scipy.optimize import curve_fit
 from sklearn.kernel_ridge import KernelRidge
+from huggingface_hub import snapshot_download
 
 def irt_formula(theta, z, guess):
     return guess + (1-guess)*torch.sigmoid(theta[:, None] + z[None, :])
@@ -57,25 +58,26 @@ if __name__ == "__main__":
     
     repo_ids = [
         "EleutherAI/pythia-12b",
-        "EleutherAI/pythia-6.9b",
-        "EleutherAI/pythia-2.8b",
-        "EleutherAI/pythia-1.4b",
-        "EleutherAI/pythia-1b",
-        "EleutherAI/pythia-410m",
-        "EleutherAI/pythia-160m",
-        "EleutherAI/pythia-70m",
-        "EleutherAI/pythia-14m",
-        "LLM360/Amber",
-        "HuggingFaceTB/SmolLM2-1.7B-intermediate-checkpoints",
-        "HuggingFaceTB/SmolLM2-360M-intermediate-checkpoints",
-        "HuggingFaceTB/SmolLM2-135M-intermediate-checkpoints",
+        # "EleutherAI/pythia-6.9b",
+        # "EleutherAI/pythia-2.8b",
+        # "EleutherAI/pythia-1.4b",
+        # "EleutherAI/pythia-1b",
+        # "EleutherAI/pythia-410m",
+        # "EleutherAI/pythia-160m",
+        # "EleutherAI/pythia-70m",
+        # "EleutherAI/pythia-14m",
+        # "LLM360/Amber",
+        # "HuggingFaceTB/SmolLM2-1.7B-intermediate-checkpoints",
+        # "HuggingFaceTB/SmolLM2-360M-intermediate-checkpoints",
+        # "HuggingFaceTB/SmolLM2-135M-intermediate-checkpoints",
     ]
     model_names = [repo_id.split("/")[1] for repo_id in repo_ids]
     
-    scenarios = ['babi_qa', 'civil_comments', 'commonsense',
-       'dyck_language_np=3', 'entity_data_imputation', 'entity_matching',
-       'gsm', 'legal_support', 'legalbench', 'mmlu', 'raft',
-       'synthetic_reasoning', 'wikifact'] # 'med_qa', 'boolq', 'imdb'
+    scenarios = ['wikifact']
+    # scenarios = ['babi_qa', 'civil_comments', 'commonsense',
+    #    'dyck_language_np=3', 'entity_data_imputation', 'entity_matching',
+    #    'gsm', 'legal_support', 'legalbench', 'mmlu', 'raft',
+    #    'synthetic_reasoning', 'wikifact'] # 'med_qa', 'boolq', 'imdb'
     scenario2guess = {
         'babi_qa': 0,
         'civil_comments': 0.5,
@@ -96,7 +98,8 @@ if __name__ == "__main__":
     for scenario in tqdm(scenarios):
         guess = scenario2guess[scenario]
         for model_name in model_names:
-            with open(f"data/gather_ckpt_data/aggregate_matrix/results_{model_name}.pkl", "rb") as f:
+            cache_dir = snapshot_download(repo_id="stair-lab/irsl_downstream_resmat1_binary", repo_type="dataset")
+            with open(f"{cache_dir}/results_{model_name}.pkl", "rb") as f:
                 results = pickle.load(f)
             keep_cols = ~results.columns.get_level_values("z").isna()
             results = results.loc[:, keep_cols]
@@ -112,7 +115,6 @@ if __name__ == "__main__":
             zs = results.columns.get_level_values("z").astype(float).to_numpy()
             zs = torch.tensor(zs, dtype=torch.float, device=device)
             time_steps = np.array([float(name.split("-")[-1]) for name in results.index])
-            # flops = time_steps * 2097152.0 * 1.7e9 * 6.0 / 1e21
             log_time_steps = np.log(time_steps+1e-6)
 
             if split_method == "hardeasy_split":
@@ -120,8 +122,10 @@ if __name__ == "__main__":
                 item_means = torch.nanmean(ys, dim=0)
                 sorted_indices = torch.argsort(item_means)
                 split_idx = n_items // 2
-                train_indices = sorted_indices[:split_idx]   # Smaller zs → train
-                test_indices = sorted_indices[split_idx:]    # Larger zs → test
+                # train_indices = sorted_indices[:split_idx]   # Smaller zs → train
+                # test_indices = sorted_indices[split_idx:]    # Larger zs → test
+                train_indices = sorted_indices[split_idx:]   # Smaller zs → train
+                test_indices = sorted_indices[:split_idx]    # Larger zs → test
 
             elif split_method == "random_55split":
                 perm = torch.randperm(n_items)
@@ -190,8 +194,10 @@ if __name__ == "__main__":
                 "train_linears": train_linears,
                 "train_irts": train_irts,
                 "test_irts": test_irts,
+                "zs_train": zs_train,
+                "zs_test": zs_test,
             }
             
     final_results_dict = {k: dict(v) for k, v in results_dict.items()}
-    with open(f"downstream_data_{split_method}.pkl", "wb") as f:
+    with open(f"downstream_binary_generalize_{split_method}.pkl", "wb") as f:
         pickle.dump(final_results_dict, f)

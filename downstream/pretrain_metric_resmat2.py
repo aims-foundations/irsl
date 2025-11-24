@@ -45,9 +45,9 @@ if __name__ == "__main__":
             os.makedirs(output_dir, exist_ok=True)
             
             flops = value_dict["flops"]
-            thetass_pvocab = value_dict["thetass_pvocab"].squeeze(-1)
-            thetass_pchoices = value_dict["thetass_pchoices"].squeeze(-1)
-            thetass_acc = value_dict["thetass_acc"].squeeze(-1)
+            thetass_pvocab = value_dict["thetass_pvocab"]
+            thetass_pchoices = value_dict["thetass_pchoices"]
+            thetass_acc = value_dict["thetass_acc"]
             
             # theta convergence
             for thetass, name in zip(
@@ -72,7 +72,20 @@ if __name__ == "__main__":
             final_thetas_acc = thetass_acc[:, -1]
             y_sub_pvocab = value_dict["y_sub_prob_vocab_correct"]
             y_sub_pchoices = value_dict["y_sub_prob_choices_correct"]
-            y_sub_acc = value_dict["y_sub_acc"]
+            # y_sub_acc = value_dict["y_sub_acc"]
+            
+            subset_size = 50
+            resmat = value_dict["resmat_acc"]
+            rng = np.random.default_rng(0)
+            y_sub_rows = []
+            for _, row in resmat.iterrows():
+                vals = row.to_numpy()
+                k = subset_size
+                chosen = rng.choice(len(vals), size=k, replace=False)
+                y_sub_rows.append(float(np.nanmean(vals[chosen])))
+            y_sub_acc = np.array(y_sub_rows)
+            assert y_sub_acc.shape == y_sub_pchoices.shape
+                
             y_full_pvocab = value_dict["y_full_prob_vocab_correct"]
             y_full_pchoices = value_dict["y_full_prob_choices_correct"]
             
@@ -84,23 +97,24 @@ if __name__ == "__main__":
                 else:
                     ax1.plot(flops, y_full_pchoices, color="tab:blue", linewidth=1.5, label="fullset p_choices (GT)")
                 ax1.plot(flops, y_sub_pchoices, color='tab:blue', linewidth=1.5, label="subset p_choices", linestyle=":")
-                ax1.plot(flops, y_sub_acc, color='tab:blue', linewidth=1.5, label="subset acc", linestyle="-.")
+                # ax1.plot(flops, y_sub_acc, color='tab:blue', linewidth=1.5, label="subset acc", linestyle="-.")
                 ax1.set_xlabel("FLOP", fontsize=16)
                 ax1.set_xscale("log")
                 ax1.set_ylabel("Mean score", color='tab:blue', fontsize=16)
+                ax1.set_title(f"{model_family}, {dataset}", fontsize=18)
                 ax1.tick_params(axis="x", labelsize=16)
                 ax1.tick_params(axis='y', labelcolor='tab:blue', labelsize=16)
                 ax2 = ax1.twinx()
                 if dataset.split("_")[0] == "mmlu":
                     ax2.plot(flops, final_thetas_pvocab, color='tab:red', linewidth=1.5, label="subset beta-IRT p_vocab", linestyle="--")
                 ax2.plot(flops, final_thetas_pchoices, color='tab:red', linewidth=1.5, label="subset beta-IRT p_choices", linestyle=":")
-                ax2.plot(flops, final_thetas_acc, color='tab:red', linewidth=1.5, label="subset binary-IRT acc", linestyle="-.")
+                # ax2.plot(flops, final_thetas_acc, color='tab:red', linewidth=1.5, label="subset binary-IRT acc", linestyle="-.")
                 ax2.set_ylabel(r"IRT $\theta$", color='tab:red', fontsize=16)
                 # ax2.set_ylim(-5, None)
                 ax2.tick_params(axis='y', labelcolor='tab:red', labelsize=16)
                 lines1, labels1 = ax1.get_legend_handles_labels()
                 lines2, labels2 = ax2.get_legend_handles_labels()
-                ax1.legend(lines1 + lines2, labels1 + labels2, fontsize=10, loc="center left", bbox_to_anchor=(1.2, 0.5))
+                ax1.legend(lines1 + lines2, labels1 + labels2, fontsize=10, loc="center left", bbox_to_anchor=(1.25, 0.5))
                 plt.tight_layout()
                 plt.savefig(f"{output_dir}/law_curve.png", dpi=300, bbox_inches="tight")
                 plt.close()
