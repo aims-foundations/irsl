@@ -70,32 +70,3 @@ if __name__ == "__main__":
     print(f"=== TV averages across all datasets & models ===")
     print(f"Accuracy TV avg: {acc_tv_avg:.4f}")
     print(f"Theta TV avg:    {theta_tv_avg:.4f}\n")
-
-        
-    
-    # steps = results_dict[scenario][model]["steps"]
-    # ys = results_dict[scenario][model]["ys"]
-    # thetass = results_dict[scenario][model]["thetass"]
-    
-    # step_pcts = steps.astype(int) / steps.astype(int).max() * 100.0
-    # final_thetas = thetass[:, -1].cpu().numpy()
-    # means_sub = torch.nanmean(ys[:, torch.randperm(ys.shape[1])[:budget]], dim=1).cpu().numpy()
-
-    # # drop first DROP_FIRST_FRAC%
-    # drop_idx = int(DROP_FIRST_FRAC * len(step_pcts))
-    # step_pcts, final_thetas, means_sub = step_pcts[drop_idx:], final_thetas[drop_idx:], means_sub[drop_idx:]
-
-    # # back testing
-    # acc_maes  = [backtest_krr(step_pcts, means_sub, A) for A in A_LIST]
-    # theta_maes = [backtest_krr(step_pcts, final_thetas, A) for A in A_LIST]
-    # # print results
-    # print("=== Backtesting Results ===")
-    # for A, (train_acc, test_acc), (train_theta, test_theta) in zip(A_LIST, acc_maes, theta_maes):
-    #     print(f"A={A:.1f}\n    Accuracy: train MAE={train_acc:.4f}, test MAE={test_acc:.4f}\n"
-    #         f"    Theta: train MAE={train_theta:.4f}, test MAE={test_theta:.4f}")
-
-    # # variance
-    # acc_tv   = total_variance(means_sub)
-    # theta_tv = total_variance(final_thetas)
-    # print("\n=== Variance Results ===")
-    # print(f"Accuracy TV: {acc_tv:.4f}, Theta TV: {theta_tv:.4f}")
