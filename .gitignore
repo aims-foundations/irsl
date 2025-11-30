@@ -5,6 +5,8 @@ data/
 result/
 helm/
 output/
+DataDecide-eval-instances/
+DataDecide-eval-instances_sample-evals/
 
 *.zip
 *.png
