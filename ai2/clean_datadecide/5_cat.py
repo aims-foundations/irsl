@@ -24,7 +24,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--loss-kind", type=str, default="beta", choices=["beta", "binary"])
 args = parser.parse_args()
 
-n_cpus = os.cpu_count()
+n_cpus = int((os.cpu_count()) * 0.8)
 print(f"Using {n_cpus} CPUs for parallel processing.")
 
 input_path = (
