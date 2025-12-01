@@ -16,25 +16,31 @@ from utils import calibrate
 REPO_ID = "yuhengtu/irsl_datadecide"
 SNAPSHOT_DIR = Path(snapshot_download(repo_id=REPO_ID, repo_type="dataset"))
 PROB_PATH = SNAPSHOT_DIR / "3_prob_matrix.parquet"
-OUTPUT_PATH = BASE_DIR / "4_prob_matrix_with_difficulty.parquet"
-BATCH_SIZE = 2048
+BINARY_PATH = SNAPSHOT_DIR / "3_binary_matrix.parquet"
+OUTPUT_PROB_PATH = BASE_DIR / "4_prob_matrix_with_difficulty.parquet"
+OUTPUT_BINARY_PATH = BASE_DIR / "4_binary_matrix_with_difficulty.parquet"
+BATCH_SIZE = 1024
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dry-run", action="store_true", help="Limit calibration to a subset of columns and skip writing output.")
 parser.add_argument("--dry-run-cols", type=int, default=5000, help="Number of columns to keep in dry-run mode.")
+parser.add_argument("--loss-kind", type=str, default="beta", choices=["beta", "binary"], help="Loss used in calibrate().")
 args = parser.parse_args()
 
-num_cuda = torch.cuda.device_count()
-prob_df = pd.read_parquet(PROB_PATH)
+input_path = PROB_PATH if args.loss_kind == "beta" else BINARY_PATH
+output_path = OUTPUT_PROB_PATH if args.loss_kind == "beta" else OUTPUT_BINARY_PATH
+
+n_cuda = torch.cuda.device_count()
+resmat_df = pd.read_parquet(input_path)
 
 if args.dry_run:
-    original_cols = len(prob_df.columns)
-    selected_columns = prob_df.columns[: args.dry_run_cols]
-    prob_df = prob_df[selected_columns]
+    original_cols = len(resmat_df.columns)
+    selected_columns = resmat_df.columns[: args.dry_run_cols]
+    resmat_df = resmat_df[selected_columns]
     print(f"Dry run enabled: limiting to {len(selected_columns)} columns (of {original_cols}) and skipping write.")
 
-train_df = prob_df[prob_df.index.get_level_values("model_split") == "train"].copy()
-test_df = prob_df[prob_df.index.get_level_values("model_split") == "test"].copy()
+train_df = resmat_df[resmat_df.index.get_level_values("model_split") == "train"].copy()
+test_df = resmat_df[resmat_df.index.get_level_values("model_split") == "test"].copy()
 
 for name, df in [("train", train_df), ("test", test_df)]:
     total_cells = df.size
@@ -46,12 +52,12 @@ for name, df in [("train", train_df), ("test", test_df)]:
 def _calibrate_chunk(chunk_array: np.ndarray, device_str: str) -> np.ndarray:
     torch.cuda.set_device(int(device_str.split(":")[-1]))
     probmat_chunk = torch.tensor(chunk_array, dtype=torch.float32, device=device_str)
-    return calibrate(probmat_chunk, device=device_str, batch_size=BATCH_SIZE)
+    return calibrate(probmat_chunk, device=device_str, batch_size=BATCH_SIZE, loss_kind=args.loss_kind)
 
 train_np = train_df.to_numpy(dtype=np.float32)
 n_items = train_np.shape[1]
-print(f"Using {num_cuda} CUDA devices; splitting {n_items} columns across devices.")
-col_indices = np.array_split(np.arange(n_items), num_cuda)
+print(f"Using {n_cuda} CUDA devices; splitting {n_items} columns across devices.")
+col_indices = np.array_split(np.arange(n_items), n_cuda)
 chunks = [(cols[0], cols[-1] + 1) for cols in col_indices if len(cols) > 0]
 
 z_optimized = np.empty(n_items, dtype=np.float32)
@@ -74,10 +80,10 @@ print(
     f"\ncorr with np.nanmean(test_df[questions], axis=0) = {rho_test:.6f}\n"
 )
 
-prob_df_with_difficulty = prob_df.copy()
-prob_df_with_difficulty.columns = pd.MultiIndex.from_arrays(
-    [prob_df.columns, z_optimized],
+resmat_df_with_difficulty = resmat_df.copy()
+resmat_df_with_difficulty.columns = pd.MultiIndex.from_arrays(
+    [resmat_df.columns, z_optimized],
     names=["question_id", "difficulty"],
 )
 if not args.dry_run:
-    prob_df_with_difficulty.to_parquet(OUTPUT_PATH)
+    resmat_df_with_difficulty.to_parquet(output_path)
