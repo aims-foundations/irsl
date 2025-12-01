@@ -7,7 +7,35 @@ import torch
 torch.manual_seed(0)
 from torch.distributions import Bernoulli
 import numpy as np
+from torch.optim import LBFGS
 
+def calibrate(probmat: torch.Tensor, device: str, n_thetas_nuisance: int = 150, eps: float = 1e-6, phi: float = 10.0, batch_size: int = 50000) -> np.ndarray:
+    probmat = probmat.to(device)
+    n_test_takers, n_items = probmat.shape
+    thetas_nuisance = torch.randn(n_thetas_nuisance, n_test_takers, device=device)
+    phi_tensor = torch.tensor(phi, device=device)
+
+    optimized_zs = []
+    for start in tqdm(range(0, n_items, batch_size)):
+        end = min(start + batch_size, n_items)
+        prob_batch = probmat[:, start:end]
+        z_batch = torch.randn(end - start, requires_grad=True, device=device)
+        optim_z = LBFGS([z_batch], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
+
+        def closure_z():
+            optim_z.zero_grad()
+            mask = ~torch.isnan(prob_batch).expand(n_thetas_nuisance, -1, -1)
+            mu = torch.sigmoid(thetas_nuisance[:, :, None] + z_batch[None, None, :])
+            y = prob_batch.expand(n_thetas_nuisance, -1, -1).clamp(eps, 1 - eps)
+            nll = beta_nll(y[mask], mu[mask], phi_tensor)
+            loss = nll.mean()
+            loss.backward()
+            return loss
+
+        z_opt = trainer([z_batch], optim_z, closure_z, verbose=True)[0].detach()
+        optimized_zs.append(z_opt)
+
+    return torch.cat(optimized_zs).cpu().numpy()
 
 def compute_pass_iatk_gt(n: int, c: int, k: int) -> float:
     if n - c < k:
@@ -340,3 +368,4 @@ def visualize_response_matrix(results, value, filename):
         cbar.set_ticklabels(["-1", "0", "1"])
         plt.savefig(filename, dpi=600, bbox_inches="tight")
         plt.close()
+        

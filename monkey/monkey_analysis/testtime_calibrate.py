@@ -2,18 +2,15 @@ import numpy as np
 import torch
 torch.manual_seed(0)
 torch.set_num_threads(1)
-from torch.optim import LBFGS
 from scipy.stats import spearmanr
 from huggingface_hub import snapshot_download
 import sys
 sys.path.append("../..")
-from utils import beta_nll, trainer
+from utils import calibrate
 from tueplots import bundles
 bundles.icml2024()
     
 if __name__ == "__main__":
-    eps = 1e-6
-    n_thetas_nuisance = 150
     device = "cuda:7"
     N_MODELS_FOR_TEST = 4
     
@@ -41,20 +38,7 @@ if __name__ == "__main__":
     n_test_takers, n_items = probmat.shape
     assert not torch.isnan(probmat).any()
     
-    thetas_nuisance = torch.randn(n_thetas_nuisance, n_test_takers, device=device)
-    z = torch.randn(n_items, requires_grad=True, device=device)
-    optim_z = LBFGS([z], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
-    def closure_z():
-        optim_z.zero_grad()
-        mask = ~torch.isnan(probmat).expand(n_thetas_nuisance, -1, -1)
-        mu = torch.sigmoid(thetas_nuisance[:, :, None] + z[None, None, :])
-        y = probmat.expand(n_thetas_nuisance, -1, -1).clamp(eps, 1 - eps)
-        phi = torch.tensor(5.0, device=device)
-        nll = beta_nll(y[mask], mu[mask], phi)
-        loss = nll.mean()
-        loss.backward()
-        return loss
-    z_optimized = trainer([z], optim_z, closure_z, verbose=True)[0].detach().cpu().numpy()
+    z_optimized = calibrate(probmat, device)
 
     rho2, _ = spearmanr(z_optimized, np.nanmean(data_tensor[:n_models_for_train, :, :], axis=(0, 2)))
     rho3, _ = spearmanr(z_optimized, np.nanmean(data_tensor[n_models_for_train:, :, :], axis=(0, 2)))
@@ -78,3 +62,4 @@ if __name__ == "__main__":
         payload["helm_zs"] = helm_zs
         
     torch.save(payload, out_path)
+    

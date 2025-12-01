@@ -5,7 +5,7 @@ import tarfile
 
 from huggingface_hub import snapshot_download
 
-root_dir = "/lfs/skampere2/0/sttruong/irsl/ai2/clean_datadecide/DataDecide-eval-instances"
+root_dir = "./DataDecide-eval-instances"
 
 ### 1. download
 snapshot_download(
