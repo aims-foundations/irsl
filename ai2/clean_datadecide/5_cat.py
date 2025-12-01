@@ -11,19 +11,23 @@ from matplotlib import pyplot as plt
 from tqdm import tqdm
 from tueplots import bundles
 bundles.icml2024()
+from huggingface_hub import snapshot_download
 
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.append(str(BASE_DIR.parent.parent))
 from utils import cat_beta_1pl, cat_binary_1pl
+
+REPO_ID = "yuhengtu/irsl_datadecide"
+SNAPSHOT_DIR = Path(snapshot_download(repo_id=REPO_ID, repo_type="dataset"))
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--loss-kind", type=str, default="beta", choices=["beta", "binary"])
 args = parser.parse_args()
 
 input_path = (
-    BASE_DIR / "4_prob_matrix_with_difficulty.parquet"
+    SNAPSHOT_DIR / "4_prob_matrix_with_difficulty.parquet"
     if args.loss_kind == "beta"
-    else BASE_DIR / "4_binary_matrix_with_difficulty.parquet"
+    else SNAPSHOT_DIR / "4_binary_matrix_with_difficulty.parquet"
 )
 output_path = (
     BASE_DIR / "5_prob_matrix_with_theta.parquet"
