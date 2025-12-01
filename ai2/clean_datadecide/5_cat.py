@@ -24,6 +24,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--loss-kind", type=str, default="beta", choices=["beta", "binary"])
 args = parser.parse_args()
 
+n_cpus = os.cpu_count()
+print(f"Using {n_cpus} CPUs for parallel processing.")
+
 input_path = (
     SNAPSHOT_DIR / "4_prob_matrix_with_difficulty.parquet"
     if args.loss_kind == "beta"
@@ -57,13 +60,13 @@ for bench in tqdm(bench_names):
     n_models = scen_matrix.shape[0]
 
     if args.loss_kind == "binary":
-        thetass = Parallel(n_jobs=-1)(
+        thetass = Parallel(n_jobs=n_cpus)(
             delayed(cat_binary_1pl)(scen_matrix[i], scen_zs, "cpu")
             for i in range(n_models)
         )
         fig_name = plots_dir / f"{bench}_binary_theta_convergence.png"
     else:
-        thetass = Parallel(n_jobs=-1)(
+        thetass = Parallel(n_jobs=n_cpus)(
             delayed(cat_beta_1pl)(scen_matrix[i], scen_zs, "cpu")
             for i in range(n_models)
         )
