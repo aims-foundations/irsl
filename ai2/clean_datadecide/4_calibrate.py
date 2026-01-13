@@ -20,6 +20,7 @@ BINARY_PATH = SNAPSHOT_DIR / "3_binary_matrix.parquet"
 OUTPUT_PROB_PATH = BASE_DIR / "4_prob_matrix_with_difficulty.parquet"
 OUTPUT_BINARY_PATH = BASE_DIR / "4_binary_matrix_with_difficulty.parquet"
 BATCH_SIZE = 1024
+CUDAS = [4, 5, 6, 7]
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dry-run", action="store_true", help="Limit calibration to a subset of columns and skip writing output.")
@@ -30,7 +31,6 @@ args = parser.parse_args()
 input_path = PROB_PATH if args.loss_kind == "beta" else BINARY_PATH
 output_path = OUTPUT_PROB_PATH if args.loss_kind == "beta" else OUTPUT_BINARY_PATH
 
-n_cuda = torch.cuda.device_count()
 resmat_df = pd.read_parquet(input_path)
 
 if args.dry_run:
@@ -56,15 +56,15 @@ def _calibrate_chunk(chunk_array: np.ndarray, device_str: str) -> np.ndarray:
 
 train_np = train_df.to_numpy(dtype=np.float32)
 n_items = train_np.shape[1]
-print(f"Using {n_cuda} CUDA devices; splitting {n_items} columns across devices.")
-col_indices = np.array_split(np.arange(n_items), n_cuda)
+print(f"Using {len(CUDAS)} CUDA devices {CUDAS}; splitting {n_items} columns across devices.")
+col_indices = np.array_split(np.arange(n_items), len(CUDAS))
 chunks = [(cols[0], cols[-1] + 1) for cols in col_indices if len(cols) > 0]
 
 z_optimized = np.empty(n_items, dtype=np.float32)
 with ProcessPoolExecutor(max_workers=len(chunks)) as executor:
     futures = []
     for device_idx, (start, end) in enumerate(chunks):
-        device_str = f"cuda:{device_idx}"
+        device_str = f"cuda:{CUDAS[device_idx]}"
         fut = executor.submit(_calibrate_chunk, train_np[:, start:end], device_str)
         futures.append((start, end, fut))
     for start, end, fut in futures:

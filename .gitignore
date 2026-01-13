@@ -3,6 +3,7 @@ wandb
 
 data/
 result/
+results/
 helm/
 output/
 DataDecide-eval-instances/

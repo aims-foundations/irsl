@@ -2,12 +2,17 @@ from pathlib import Path
 import random
 
 import pandas as pd
+from huggingface_hub import snapshot_download
 
+
+REPO_ID = "yuhengtu/irsl_datadecide"
+SNAPSHOT_DIR = Path(snapshot_download(repo_id=REPO_ID, repo_type="dataset"))
 
 BASE_DIR = Path(__file__).resolve().parent
-DATA_PATH = BASE_DIR / "2_data_decide_long.parquet"
+DATA_PATH = SNAPSHOT_DIR / "2_data_decide_long.parquet"
 OUTPUT_BINARY = BASE_DIR / "3_binary_matrix.parquet"
 OUTPUT_PROB = BASE_DIR / "3_prob_matrix.parquet"
+PROB_THRESHOLD = 0.15
 
 ### 1. clean
 # keep only rows with model_seed == 2
@@ -25,6 +30,12 @@ max_steps = (
 )
 frame = frame.merge(max_steps, on=group_cols, how="left")
 frame["model_is_final_step"] = frame["model_step_numeric"] == frame["max_model_step"]
+# for testing, print 100 rows of the columns: "model_data_mix", "model_size", "model_step", "model_is_final_step"
+print(
+    frame[["model_data_mix", "model_size", "model_step", "model_is_final_step"]]
+    .head(100)
+    .to_string(index=False)
+)
 
 # Split model_data_mix values into deterministic train/test buckets
 mixes = frame["model_data_mix"].dropna().unique().tolist()
@@ -54,6 +65,13 @@ prob_matrix = frame.pivot_table(
     values="p_correct_choice",
     aggfunc="first",
 )
+
+### 3. filter out low score test takers
+prob_row_mean = prob_matrix.mean(axis=1, skipna=True)
+rows_to_drop = set(prob_row_mean[prob_row_mean < PROB_THRESHOLD].index)
+binary_matrix = binary_matrix.drop(index=rows_to_drop)
+prob_matrix = prob_matrix.drop(index=rows_to_drop)
+print(f"Dropped {len(rows_to_drop)} low-average rows; remaining rows: {len(binary_matrix)}")
 
 for name, matrix in [("binary_matrix", binary_matrix), ("prob_matrix", prob_matrix)]:
     total_cells = matrix.size
