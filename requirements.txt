@@ -1,20 +1,45 @@
-scikit-learn
-torch==2.4.0
-datasets
-transformers
-numpy
-pandas
-wandb
-matplotlib
-tueplots
-selenium
-seaborn
-python-dotenv
-webdriver_manager
-flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.5.8/flash_attn-2.5.8+cu122torch2.3cxx11abiFALSE-cp310-cp310-linux_x86_64.whl#sha256=13454dd3d37cf173649bd389b84614b8072fb283f8f2fd23a65ab66caafc304b
-vllm==0.6.3.post1
-torchmetrics
-trl==0.12.1
-fastparquet
-statsmodels
-git+https://github.com/andyljones/boardlaw.git#egg=boardlaw
+# Core scientific computing
+numpy>=1.24.0
+scipy>=1.10.0
+pandas>=2.0.0
+scikit-learn>=1.3.0
+statsmodels>=0.14.0
+
+# Deep learning (PyTorch 2.4+ recommended for Python 3.10)
+# Note: For Python 3.10, use torch==2.4.0
+# For Python 3.11+, use torch>=2.5.0
+torch>=2.4.0
+torchmetrics>=1.0.0
+
+# Transformers and LLM libraries
+transformers>=4.30.0
+datasets>=2.10.0
+trl>=0.12.1
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+tueplots>=0.2.0
+
+# Utilities
+tqdm>=4.65.0
+joblib>=1.3.0
+python-dotenv>=1.0.0
+wandb>=0.15.0
+fastparquet>=2023.0.0
+
+# Optional: For web scraping (only needed for data collection)
+selenium>=4.10.0
+webdriver_manager>=3.8.0
+
+# Optional: Inference acceleration (requires CUDA and Python 3.10)
+# Uncomment if needed and you have CUDA installed:
+# flash-attn>=2.5.0 --no-build-isolation
+# vllm>=0.6.3
+
+# Optional: Additional utilities
+# boardlaw - uncomment if needed:
+# git+https://github.com/andyljones/boardlaw.git#egg=boardlaw
+
+# Note: If using Python 3.11+, some packages may need updated versions
+# If flash-attn installation fails, it's optional for basic experiments

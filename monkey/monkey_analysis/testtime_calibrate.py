@@ -11,13 +11,17 @@ from tueplots import bundles
 bundles.icml2024()
     
 if __name__ == "__main__":
-    device = "cuda:7"
+    # Auto-detect device (use cuda:0 if available, otherwise cpu)
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device}")
+
     N_MODELS_FOR_TEST = 4
-    
+
     # FILE_NAME = "irsl_testtime_resmat1"
     FILE_NAME = "irsl_testtime_resmat2"
     cache_dir = snapshot_download(repo_id=f"stair-lab/{FILE_NAME}", repo_type="dataset")
-    
+
+    # Note: weights_only=False is required for PyTorch 2.6+
     testtime_resmat = torch.load(f"{cache_dir}/resmat.pt", map_location="cpu", weights_only=False)
     data_tensor = testtime_resmat["data_tensor"].numpy() 
     model_names = testtime_resmat["models"]
