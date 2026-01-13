@@ -25,7 +25,8 @@ if __name__ == "__main__":
     sample_budget = 50
     item_budget = 50 if FILE_NAME == "irsl_testtime_resmat1" else 30
     
-    testtime_resmat = torch.load(f"{FILE_NAME}_withz.pt", map_location="cpu")
+    # Note: weights_only=False is required for PyTorch 2.6+
+    testtime_resmat = torch.load(f"{FILE_NAME}_withz.pt", map_location="cpu", weights_only=False)
     data_tensor = testtime_resmat["data_tensor"]
     model_names = testtime_resmat["models"]
     datasets  = testtime_resmat["datasets"]

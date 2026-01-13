@@ -50,7 +50,10 @@ STEP2FLOP = {
 #     'synthetic_reasoning', 'wikifact'] # 'med_qa', 'boolq', 'imdb'
 
 if __name__ == "__main__":
-    device = "cpu" # "cuda:4"
+    # Auto-detect device (prefer CUDA if available, otherwise CPU)
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device}")
+
     budget = 100
     max_workers = 256
     results_dict = defaultdict(lambda: defaultdict(dict))

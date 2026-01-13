@@ -11,7 +11,8 @@ if __name__ == "__main__":
     FILE_NAME = "irsl_testtime_resmat1"
     # FILE_NAME = "irsl_testtime_resmat2"
 
-    testtime_resmat = torch.load(f"{FILE_NAME}_withz.pt", map_location="cpu")
+    # Note: weights_only=False is required for PyTorch 2.6+
+    testtime_resmat = torch.load(f"{FILE_NAME}_withz.pt", map_location="cpu", weights_only=False)
     model_names = list(testtime_resmat["models"])          # all models
     test_model_names = list(testtime_resmat["test_models"])# test models
     train_model_names = [m for m in model_names if m not in test_model_names]
