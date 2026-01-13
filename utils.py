@@ -9,16 +9,35 @@ from torch.distributions import Bernoulli
 import numpy as np
 from torch.optim import LBFGS
 
-def calibrate(probmat: torch.Tensor, device: str, n_thetas_nuisance: int = 150, eps: float = 1e-6, phi: float = 10.0, batch_size: int = 50000) -> np.ndarray:
-    probmat = probmat.to(device)
-    n_test_takers, n_items = probmat.shape
+def calibrate(
+    resmat: torch.Tensor,
+    device: str,
+    n_thetas_nuisance: int = 150,
+    eps: float = 1e-6,
+    phi: float = 10.0,
+    batch_size: int = 50000,
+    loss_kind: str = "beta"
+) -> np.ndarray:
+    resmat = resmat.to(device)
+    n_test_takers, n_items = resmat.shape
     thetas_nuisance = torch.randn(n_thetas_nuisance, n_test_takers, device=device)
     phi_tensor = torch.tensor(phi, device=device)
+
+    if loss_kind == "beta":
+        def compute_loss(prob_batch, mu, mask):
+            y = prob_batch.expand(n_thetas_nuisance, -1, -1).clamp(eps, 1 - eps)
+            return beta_nll(y[mask], mu[mask], phi_tensor).mean()
+    elif loss_kind == "binary":
+        def compute_loss(prob_batch, mu, mask):
+            y = prob_batch.expand(n_thetas_nuisance, -1, -1)
+            return -Bernoulli(probs=mu[mask]).log_prob(y[mask]).mean()
+    else:
+        raise ValueError(f"Unknown loss_kind: {loss_kind}")
 
     optimized_zs = []
     for start in tqdm(range(0, n_items, batch_size)):
         end = min(start + batch_size, n_items)
-        prob_batch = probmat[:, start:end]
+        prob_batch = resmat[:, start:end]
         z_batch = torch.randn(end - start, requires_grad=True, device=device)
         optim_z = LBFGS([z_batch], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
 
@@ -26,9 +45,7 @@ def calibrate(probmat: torch.Tensor, device: str, n_thetas_nuisance: int = 150, 
             optim_z.zero_grad()
             mask = ~torch.isnan(prob_batch).expand(n_thetas_nuisance, -1, -1)
             mu = torch.sigmoid(thetas_nuisance[:, :, None] + z_batch[None, None, :])
-            y = prob_batch.expand(n_thetas_nuisance, -1, -1).clamp(eps, 1 - eps)
-            nll = beta_nll(y[mask], mu[mask], phi_tensor)
-            loss = nll.mean()
+            loss = compute_loss(prob_batch, mu, mask)
             loss.backward()
             return loss
 
