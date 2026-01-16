@@ -1,131 +1,145 @@
 import numpy as np
-from scipy.optimize import minimize
-from scipy.special import expit, betaln
+import torch
 import matplotlib.pyplot as plt
 import os
+import time
 
-rng = np.random.default_rng(42)
+# Set up device
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using device: {device}")
 
-def prob_2pl(theta, a, b):
-    """2PL probability: p = sigmoid(a * (theta - b))"""
-    return expit(a[None, :] * (theta[:, None] - b[None, :]))
+def prob_2pl_np(theta, a, b):
+    """2PL probability (numpy version for simulation)"""
+    return 1.0 / (1.0 + np.exp(-a[None, :] * (theta[:, None] - b[None, :])))
 
-def simulate_binary_2pl(theta, a, b):
+def simulate_binary_2pl(theta, a, b, rng):
     """Simulate binary responses from 2PL model"""
-    p = prob_2pl(theta, a, b)
+    p = prob_2pl_np(theta, a, b)
     y = rng.binomial(1, p)
     return y, p
 
-def simulate_prob_matrix_2pl(theta, a, b, noise_sd=0.01):
+def simulate_prob_matrix_2pl(theta, a, b, noise_sd, rng):
     """Simulate noisy probability matrix from 2PL model"""
-    p = prob_2pl(theta, a, b)
+    p = prob_2pl_np(theta, a, b)
     noisy = p + rng.normal(0.0, noise_sd, size=p.shape)
     noisy = np.clip(noisy, 1e-6, 1 - 1e-6)
     return noisy, p
 
-def fit_2pl_bernoulli(Y, maxiter=6000):
-    """Fit 2PL model to binary responses using MLE
-
-    Improved with bounded discrimination and better initialization.
-    """
+def fit_2pl_bernoulli_torch(Y, maxiter=1000, lr=1.0):
+    """Fit 2PL model to binary responses using PyTorch LBFGS on GPU"""
     M, N = Y.shape
-    eps = 1e-12
+    Y_t = torch.tensor(Y, dtype=torch.float32, device=device)
 
     # Better initialization from observed response rates
-    p_obs = Y.mean(axis=0)  # Item pass rates
+    p_obs = Y.mean(axis=0)
     p_obs = np.clip(p_obs, 0.01, 0.99)
-    b_init = -np.log(p_obs / (1 - p_obs))  # Approximate difficulty
+    b_init = -np.log(p_obs / (1 - p_obs))
     b_init = b_init - b_init.mean()
 
-    theta_obs = Y.mean(axis=1)  # Person success rates
+    theta_obs = Y.mean(axis=1)
     theta_obs = np.clip(theta_obs, 0.01, 0.99)
     theta_init = np.log(theta_obs / (1 - theta_obs))
     theta_init = theta_init - theta_init.mean()
 
-    def unpack(x):
-        theta = x[:M]
-        b = x[M:M + N]
-        log_a = x[M + N:]
-        log_a = np.clip(log_a, -1.5, 1.5)
-        a = np.exp(log_a)
-        shift = b.mean()
-        b = b - shift
-        theta = theta - shift
-        return theta, a, b
+    # Initialize parameters
+    theta = torch.tensor(theta_init, dtype=torch.float32, device=device, requires_grad=True)
+    b = torch.tensor(b_init, dtype=torch.float32, device=device, requires_grad=True)
+    log_a = torch.zeros(N, device=device, requires_grad=True)
 
-    def nll(x):
-        theta, a, b = unpack(x)
-        p = prob_2pl(theta, a, b)
-        ll = np.sum(Y * np.log(p + eps) + (1 - Y) * np.log(1 - p + eps))
+    optimizer = torch.optim.LBFGS([theta, b, log_a], max_iter=maxiter, lr=lr,
+                                   line_search_fn='strong_wolfe')
+
+    def closure():
+        optimizer.zero_grad()
+        # Center b for identifiability
+        b_centered = b - b.mean()
+        theta_centered = theta - b.mean()
+
+        # Constrain log_a
+        log_a_clipped = torch.clamp(log_a, -1.5, 1.5)
+        a = torch.exp(log_a_clipped)
+
+        p = torch.sigmoid(a[None, :] * (theta_centered[:, None] - b_centered[None, :]))
+        eps = 1e-12
+        ll = torch.sum(Y_t * torch.log(p + eps) + (1 - Y_t) * torch.log(1 - p + eps))
+
         # Light regularization on log_a
-        log_a = x[M + N:]
-        reg = 0.1 * np.sum(log_a ** 2)
-        return -ll + reg
+        reg = 0.1 * torch.sum(log_a ** 2)
+        loss = -ll + reg
+        loss.backward()
+        return loss
 
-    bounds = [(None, None)] * (M + N) + [(-1.5, 1.5)] * N
+    optimizer.step(closure)
 
-    # Data-driven initialization (single run)
-    x0 = np.concatenate([theta_init, b_init, np.zeros(N)])
+    # Extract parameters
+    with torch.no_grad():
+        b_centered = b - b.mean()
+        theta_centered = theta - b.mean()
+        log_a_clipped = torch.clamp(log_a, -1.5, 1.5)
+        a_out = torch.exp(log_a_clipped)
 
-    res = minimize(nll, x0, method="L-BFGS-B", bounds=bounds,
-                  options={"maxiter": maxiter})
+    return (theta_centered.cpu().numpy(), a_out.cpu().numpy(), b_centered.cpu().numpy())
 
-    return unpack(res.x), res
-
-def fit_2pl_beta(Pobs, phi=400.0, maxiter=8000):
-    """Fit 2PL model to probability matrix using Beta likelihood
-
-    Improved optimization with:
-    1. Better initialization using observed data
-    2. Bounded discrimination parameters
-    3. L2 regularization on discrimination
-    """
+def fit_2pl_beta_torch(Pobs, phi=400.0, maxiter=1000, lr=1.0):
+    """Fit 2PL model to probability matrix using Beta likelihood with PyTorch LBFGS on GPU"""
     M, N = Pobs.shape
-    eps = 1e-6
-    Pobs = np.clip(Pobs, eps, 1 - eps)
+    Pobs = np.clip(Pobs, 1e-6, 1 - 1e-6)
+    Pobs_t = torch.tensor(Pobs, dtype=torch.float32, device=device)
 
-    # Better initialization: estimate theta and b from observed probabilities
-    # Using the fact that logit(p) ≈ a*(theta - b)
+    # Better initialization from observed probabilities
     logit_P = np.log(Pobs / (1 - Pobs))
-    theta_init = logit_P.mean(axis=1)  # Average logit across items
-    b_init = -logit_P.mean(axis=0)  # Average logit across people (negated)
+    theta_init = logit_P.mean(axis=1)
+    b_init = -logit_P.mean(axis=0)
     theta_init = theta_init - theta_init.mean()
     b_init = b_init - b_init.mean()
 
-    def unpack(x):
-        theta = x[:M]
-        b = x[M:M + N]
-        log_a = x[M + N:]
-        # Clip log_a to prevent extreme values
-        log_a = np.clip(log_a, -1.5, 1.5)  # a in [0.22, 4.48]
-        a = np.exp(log_a)
-        shift = b.mean()
-        b = b - shift
-        theta = theta - shift
-        return theta, a, b
+    # Initialize parameters
+    theta = torch.tensor(theta_init, dtype=torch.float32, device=device, requires_grad=True)
+    b = torch.tensor(b_init, dtype=torch.float32, device=device, requires_grad=True)
+    log_a = torch.zeros(N, device=device, requires_grad=True)
 
-    def nll(x):
-        theta, a, b = unpack(x)
-        p = prob_2pl(theta, a, b)
-        p = np.clip(p, eps, 1 - eps)
+    optimizer = torch.optim.LBFGS([theta, b, log_a], max_iter=maxiter, lr=lr,
+                                   line_search_fn='strong_wolfe')
+
+    def closure():
+        optimizer.zero_grad()
+        # Center b for identifiability
+        b_centered = b - b.mean()
+        theta_centered = theta - b.mean()
+
+        # Constrain log_a
+        log_a_clipped = torch.clamp(log_a, -1.5, 1.5)
+        a = torch.exp(log_a_clipped)
+
+        p = torch.sigmoid(a[None, :] * (theta_centered[:, None] - b_centered[None, :]))
+        p = torch.clamp(p, 1e-6, 1 - 1e-6)
+
         alpha = phi * p
         beta_param = phi * (1 - p)
-        ll = np.sum((alpha - 1) * np.log(Pobs) + (beta_param - 1) * np.log(1 - Pobs) - betaln(alpha, beta_param))
-        # L2 regularization on log_a to keep discrimination near 1
-        log_a = x[M + N:]
-        reg = 0.5 * np.sum(log_a ** 2)  # Stronger regularization
-        return -ll + reg
 
-    # Bounds: constrain log_a to reasonable range
-    bounds = [(None, None)] * (M + N) + [(-1.5, 1.5)] * N
+        # Beta log-likelihood
+        ll = torch.sum(
+            (alpha - 1) * torch.log(Pobs_t) +
+            (beta_param - 1) * torch.log(1 - Pobs_t) -
+            torch.lgamma(alpha) - torch.lgamma(beta_param) + torch.lgamma(alpha + beta_param)
+        )
 
-    # Data-driven initialization (single run)
-    x0 = np.concatenate([theta_init, b_init, np.zeros(N)])
+        # Stronger regularization on log_a
+        reg = 0.5 * torch.sum(log_a ** 2)
+        loss = -ll + reg
+        loss.backward()
+        return loss
 
-    res = minimize(nll, x0, method="L-BFGS-B", bounds=bounds,
-                  options={"maxiter": maxiter, "ftol": 1e-10})
+    optimizer.step(closure)
 
-    return unpack(res.x), res
+    # Extract parameters
+    with torch.no_grad():
+        b_centered = b - b.mean()
+        theta_centered = theta - b.mean()
+        log_a_clipped = torch.clamp(log_a, -1.5, 1.5)
+        a_out = torch.exp(log_a_clipped)
+
+    return (theta_centered.cpu().numpy(), a_out.cpu().numpy(), b_centered.cpu().numpy())
 
 def recovery(true_vals, est_vals):
     """Compute RMSE and correlation for parameter recovery"""
@@ -141,12 +155,21 @@ def recovery_a(true_a, est_a):
     corr = float(np.corrcoef(true_a, est_a)[0, 1])
     return rmse, corr
 
-# --- Simulation over range of M values with multiple repetitions ---
+# --- Simulation parameters ---
 N = 100
-n_reps = 10  # Reduced for faster runtime
+n_reps = 10
+noise_sd = 0.01
 
-# Range of test taker counts to evaluate: 2^n for n=1 to 7
+# Range of test taker counts: 2^n for n=1 to 7
 M_values = [2, 4, 8, 16, 32, 64, 128]
+
+# Main RNG for generating true parameters
+rng_main = np.random.default_rng(42)
+
+print(f"Running {n_reps} repetitions for each of {len(M_values)} M values (2PL model)...")
+print(f"Total simulations: {n_reps * len(M_values)}")
+
+start_time = time.time()
 
 # Store results for b parameter
 rmse_binary_b_all = np.zeros((n_reps, len(M_values)))
@@ -160,19 +183,19 @@ rmse_beta_a_all = np.zeros((n_reps, len(M_values)))
 corr_binary_a_all = np.zeros((n_reps, len(M_values)))
 corr_beta_a_all = np.zeros((n_reps, len(M_values)))
 
-print(f"Running {n_reps} repetitions for each M value (2PL model)...")
 for rep in range(n_reps):
-    # Generate true parameters for each repetition
-    b_true = rng.normal(0, 1, size=N)
-    # Generate discrimination parameters from log-normal (ensures a > 0, centered around 1)
-    a_true = rng.lognormal(0, 0.5, size=N)
+    # Generate true parameters for this repetition
+    b_true = rng_main.normal(0, 1, size=N)
+    a_true = rng_main.lognormal(0, 0.5, size=N)
 
     for i, M in enumerate(M_values):
+        # Create separate RNG for this simulation
+        rng = np.random.default_rng(42 + rep * 1000 + M)
         theta = rng.normal(0, 1, size=M)
 
         # Binary 2PL
-        Y, _ = simulate_binary_2pl(theta, a_true, b_true)
-        (_, a_hat_bin, b_hat_bin), _ = fit_2pl_bernoulli(Y)
+        Y, _ = simulate_binary_2pl(theta, a_true, b_true, rng)
+        (_, a_hat_bin, b_hat_bin) = fit_2pl_bernoulli_torch(Y)
         rmse_b, corr_b = recovery(b_true, b_hat_bin)
         rmse_a, corr_a = recovery_a(a_true, a_hat_bin)
         rmse_binary_b_all[rep, i] = rmse_b
@@ -181,8 +204,8 @@ for rep in range(n_reps):
         corr_binary_a_all[rep, i] = corr_a
 
         # Beta 2PL
-        P_obs, _ = simulate_prob_matrix_2pl(theta, a_true, b_true, noise_sd=0.01)
-        (_, a_hat_beta, b_hat_beta), _ = fit_2pl_beta(P_obs, phi=400.0)
+        P_obs, _ = simulate_prob_matrix_2pl(theta, a_true, b_true, noise_sd, rng)
+        (_, a_hat_beta, b_hat_beta) = fit_2pl_beta_torch(P_obs, phi=400.0)
         rmse_b, corr_b = recovery(b_true, b_hat_beta)
         rmse_a, corr_a = recovery_a(a_true, a_hat_beta)
         rmse_beta_b_all[rep, i] = rmse_b
@@ -191,7 +214,11 @@ for rep in range(n_reps):
         corr_beta_a_all[rep, i] = corr_a
 
     if (rep + 1) % 5 == 0:
-        print(f"  Completed {rep + 1}/{n_reps} repetitions")
+        elapsed = time.time() - start_time
+        print(f"  Completed {rep + 1}/{n_reps} repetitions ({elapsed:.1f}s)")
+
+total_time = time.time() - start_time
+print(f"\nTotal time: {total_time:.1f}s")
 
 # Compute mean and std for b
 rmse_binary_b_mean = rmse_binary_b_all.mean(axis=0)
@@ -274,7 +301,7 @@ plt.rcParams.update({
 fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 M_arr = np.array(M_values)
 
-# Colors: blue for Binary, pink/magenta for Beta, purple available if needed
+# Colors: blue for Binary, pink/magenta for Beta
 color_binary = '#4169E1'  # Royal blue
 color_beta = '#E91E63'    # Pink/magenta
 
