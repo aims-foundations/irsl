@@ -24,12 +24,12 @@ def calibrate(
     phi_tensor = torch.tensor(phi, device=device)
 
     if loss_kind == "beta":
-        def compute_loss(prob_batch, mu, mask):
-            y = prob_batch.expand(n_thetas_nuisance, -1, -1).clamp(eps, 1 - eps)
+        def compute_loss(response_batch, mu, mask):
+            y = response_batch.expand(n_thetas_nuisance, -1, -1).clamp(eps, 1 - eps)
             return beta_nll(y[mask], mu[mask], phi_tensor).mean()
     elif loss_kind == "binary":
-        def compute_loss(prob_batch, mu, mask):
-            y = prob_batch.expand(n_thetas_nuisance, -1, -1)
+        def compute_loss(response_batch, mu, mask):
+            y = response_batch.expand(n_thetas_nuisance, -1, -1)
             return -Bernoulli(probs=mu[mask]).log_prob(y[mask]).mean()
     else:
         raise ValueError(f"Unknown loss_kind: {loss_kind}")
@@ -37,15 +37,15 @@ def calibrate(
     optimized_zs = []
     for start in tqdm(range(0, n_items, batch_size)):
         end = min(start + batch_size, n_items)
-        prob_batch = resmat[:, start:end]
+        response_batch = resmat[:, start:end]
         z_batch = torch.randn(end - start, requires_grad=True, device=device)
         optim_z = LBFGS([z_batch], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
 
         def closure_z():
             optim_z.zero_grad()
-            mask = ~torch.isnan(prob_batch).expand(n_thetas_nuisance, -1, -1)
+            mask = ~torch.isnan(response_batch).expand(n_thetas_nuisance, -1, -1)
             mu = torch.sigmoid(thetas_nuisance[:, :, None] + z_batch[None, None, :])
-            loss = compute_loss(prob_batch, mu, mask)
+            loss = compute_loss(response_batch, mu, mask)
             loss.backward()
             return loss
 
@@ -53,6 +53,42 @@ def calibrate(
         optimized_zs.append(z_opt)
 
     return torch.cat(optimized_zs).cpu().numpy()
+
+def calibrate_theta(
+    resmat: torch.Tensor,
+    device: str,
+    zs: torch.Tensor,
+    eps: float = 1e-6,
+    phi: float = 10.0,
+    loss_kind: str = "beta"
+) -> np.ndarray:
+    resmat, zs = resmat.to(device), zs.to(device)
+    n_test_takers, n_items = resmat.shape
+    phi_tensor = torch.tensor(phi, device=device)
+
+    if loss_kind == "beta":
+        def compute_loss(y, mu, mask):
+            y = y.clamp(eps, 1 - eps)
+            return beta_nll(y[mask], mu[mask], phi_tensor).mean()
+    elif loss_kind == "binary":
+        def compute_loss(y, mu, mask):
+            return -Bernoulli(probs=mu[mask]).log_prob(y[mask]).mean()
+    else:
+        raise ValueError(f"Unknown loss_kind: {loss_kind}")
+    
+    thetas = torch.randn(n_test_takers, requires_grad=True, device=device)
+    optim_theta = LBFGS([thetas], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
+
+    def closure_theta():
+        optim_theta.zero_grad()
+        mask = ~torch.isnan(resmat)
+        mu = torch.sigmoid(thetas[:, None] + zs[None, :])
+        loss = compute_loss(resmat, mu, mask)
+        loss.backward()
+        return loss
+
+    thetas = trainer([thetas], optim_theta, closure_theta)[0].detach()
+    return thetas.cpu().numpy()
 
 def compute_pass_iatk_gt(n: int, c: int, k: int) -> float:
     if n - c < k:

@@ -2,63 +2,58 @@ import argparse
 from pathlib import Path
 import sys
 from concurrent.futures import ProcessPoolExecutor
-
+from itertools import islice
 import numpy as np
 import pandas as pd
 import torch
 from scipy.stats import spearmanr
-from huggingface_hub import snapshot_download
+from tqdm import tqdm
+from torch.optim import LBFGS
 
-BASE_DIR = Path(__file__).resolve().parent
-sys.path.append(str(BASE_DIR.parent.parent))
-from utils import calibrate
+BASE_DIR = Path(__file__).resolve().parent / "data"
+sys.path.append(str(BASE_DIR.parent.parent.parent))
+from utils import calibrate, calibrate_theta
 
-REPO_ID = "yuhengtu/irsl_datadecide"
-SNAPSHOT_DIR = Path(snapshot_download(repo_id=REPO_ID, repo_type="dataset"))
-PROB_PATH = SNAPSHOT_DIR / "3_prob_matrix.parquet"
-BINARY_PATH = SNAPSHOT_DIR / "3_binary_matrix.parquet"
-OUTPUT_PROB_PATH = BASE_DIR / "4_prob_matrix_with_difficulty.parquet"
-OUTPUT_BINARY_PATH = BASE_DIR / "4_binary_matrix_with_difficulty.parquet"
-BATCH_SIZE = 1024
-CUDAS = [4, 5, 6, 7]
+INPUT_PROB_PATH = BASE_DIR / "3_prob_matrix.parquet"
+INPUT_BINARY_PATH = BASE_DIR / "3_binary_matrix.parquet"
+OUTPUT_PROB_PATH = BASE_DIR / "4_prob_matrix_calibrated.parquet"
+OUTPUT_BINARY_PATH = BASE_DIR / "4_binary_matrix_calibrated.parquet"
+DRY_RUN_N_COLS = 128
+BATCH_SIZE = 32
+# BATCH_SIZE = 4096
+CUDAS = [0, 1, 2, 3]
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--dry-run", action="store_true", help="Limit calibration to a subset of columns and skip writing output.")
-parser.add_argument("--dry-run-cols", type=int, default=5000, help="Number of columns to keep in dry-run mode.")
-parser.add_argument("--loss-kind", type=str, default="beta", choices=["beta", "binary"], help="Loss used in calibrate().")
+parser.add_argument("--dry-run", action="store_true")
+parser.add_argument("--loss-kind", type=str, default="beta", choices=["beta", "binary"])
 args = parser.parse_args()
 
-input_path = PROB_PATH if args.loss_kind == "beta" else BINARY_PATH
+input_path = INPUT_PROB_PATH if args.loss_kind == "beta" else INPUT_BINARY_PATH
 output_path = OUTPUT_PROB_PATH if args.loss_kind == "beta" else OUTPUT_BINARY_PATH
 
 resmat_df = pd.read_parquet(input_path)
 
 if args.dry_run:
-    original_cols = len(resmat_df.columns)
-    selected_columns = resmat_df.columns[: args.dry_run_cols]
+    selected_columns = resmat_df.columns[: DRY_RUN_N_COLS]
     resmat_df = resmat_df[selected_columns]
-    print(f"Dry run enabled: limiting to {len(selected_columns)} columns (of {original_cols}) and skipping write.")
+    print(f"Dry run: limiting to {len(selected_columns)} columns")
 
 train_df = resmat_df[resmat_df.index.get_level_values("model_split") == "train"].copy()
 test_df = resmat_df[resmat_df.index.get_level_values("model_split") == "test"].copy()
+print(f"Train shape: {train_df.shape}, Test shape: {test_df.shape}")
 
-for name, df in [("train", train_df), ("test", test_df)]:
-    total_cells = df.size
-    nan_count = int(np.isnan(df.to_numpy()).sum())
-    nan_pct = (nan_count / total_cells * 100) if total_cells else 0.0
-    print(f"{name} rows: {len(df)}, questions: {df.shape[1]}")
-    print(f"{name} NaN: {nan_count} cells ({nan_pct:.2f}%)")
-
+# fit z
+print("# fit z")
 def _calibrate_chunk(chunk_array: np.ndarray, device_str: str) -> np.ndarray:
     torch.cuda.set_device(int(device_str.split(":")[-1]))
-    probmat_chunk = torch.tensor(chunk_array, dtype=torch.float32, device=device_str)
-    return calibrate(probmat_chunk, device=device_str, batch_size=BATCH_SIZE, loss_kind=args.loss_kind)
+    mat_chunk = torch.tensor(chunk_array, dtype=torch.float32, device=device_str)
+    return calibrate(mat_chunk, device=device_str, batch_size=BATCH_SIZE, loss_kind=args.loss_kind)
 
 train_np = train_df.to_numpy(dtype=np.float32)
 n_items = train_np.shape[1]
 print(f"Using {len(CUDAS)} CUDA devices {CUDAS}; splitting {n_items} columns across devices.")
 col_indices = np.array_split(np.arange(n_items), len(CUDAS))
-chunks = [(cols[0], cols[-1] + 1) for cols in col_indices if len(cols) > 0]
+chunks = [(cols[0], cols[-1] + 1) for cols in col_indices]
 
 z_optimized = np.empty(n_items, dtype=np.float32)
 with ProcessPoolExecutor(max_workers=len(chunks)) as executor:
@@ -77,13 +72,57 @@ rho_train, _ = spearmanr(z_optimized, mean_train)
 rho_test, _ = spearmanr(z_optimized, mean_test)
 print(
     f"\ncorr with np.nanmean(train_df[questions], axis=0) = {rho_train:.6f}"
-    f"\ncorr with np.nanmean(test_df[questions], axis=0) = {rho_test:.6f}\n"
+    f"\ncorr with np.nanmean(test_df[questions], axis=0) = {rho_test:.6f}"
 )
 
-resmat_df_with_difficulty = resmat_df.copy()
-resmat_df_with_difficulty.columns = pd.MultiIndex.from_arrays(
-    [resmat_df.columns, z_optimized],
-    names=["question_id", "difficulty"],
+# fit theta
+print("# fit theta")
+theta_device = f"cuda:{CUDAS[0]}"
+bench_names = train_df.columns.get_level_values("bench_name").map(
+    lambda b: "mmlu" if b.startswith("mmlu") else b
 )
+unique_bench_names = sorted(bench_names.unique())
+
+print(f"Processing {len(unique_bench_names)} benches: {unique_bench_names}")
+bench_thetas = {}
+for bench in tqdm(unique_bench_names, desc="benches"):
+    bench_mask = bench_names == bench    
+    bench_theta = calibrate_theta(
+        resmat=torch.tensor(train_np[:, bench_mask]),
+        device=theta_device,
+        zs=torch.tensor(z_optimized[bench_mask]),
+        loss_kind=args.loss_kind,
+    )
+    bench_thetas[bench] = bench_theta
+    
+# save data
+print("# save data")
+resmat_df_new = resmat_df.copy()
+col_levels = [resmat_df.columns.get_level_values(i) for i in range(resmat_df.columns.nlevels)]
+resmat_df_new.columns = pd.MultiIndex.from_arrays(
+    [*col_levels, z_optimized],
+    names=[*(resmat_df.columns.names), "difficulty"],
+)
+
+theta_columns = [f"ability_{bench}" for bench in unique_bench_names]
+theta_df = pd.DataFrame(np.nan, index=resmat_df_new.index, columns=theta_columns, dtype=float)
+theta_values = np.column_stack([bench_thetas[b] for b in unique_bench_names])
+theta_df.loc[train_df.index, theta_columns] = theta_values
+
+org_index_cols = list(resmat_df.index.names)
+combined = pd.concat([resmat_df_new, theta_df], axis=1)
+combined = combined.reset_index()
+new_index_cols = org_index_cols + theta_columns
+combined = combined.set_index(new_index_cols)
+combined.columns = pd.MultiIndex.from_tuples(combined.columns, names=resmat_df_new.columns.names)
+
+print(f"Shape: {combined.shape}")
+idx = combined.index
+print("\nRow index names:", idx.names)
+print("Row index sample (first 5):", list(islice(idx, 5)))
+cols = combined.columns
+print("\nColumn index names:", cols.names)
+print("Column index sample (first 5):", list(islice(cols, 5)))
+
 if not args.dry_run:
-    resmat_df_with_difficulty.to_parquet(output_path)
+    combined.to_parquet(output_path)

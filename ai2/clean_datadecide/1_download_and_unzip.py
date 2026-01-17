@@ -2,20 +2,19 @@ import gzip
 import os
 import shutil
 import tarfile
-
 from huggingface_hub import snapshot_download
 
-root_dir = "./DataDecide-eval-instances"
+ROOT_DIR = "./DataDecide-eval-instances"
 
 ### 1. download
 snapshot_download(
     repo_id="allenai/DataDecide-eval-instances",
     repo_type="dataset",
-    local_dir=root_dir,
+    local_dir=ROOT_DIR,
 )
 
 ### 2. unzip
-dirs_to_visit = [root_dir]
+dirs_to_visit = [ROOT_DIR]
 
 while dirs_to_visit:
     current_dir = dirs_to_visit.pop()

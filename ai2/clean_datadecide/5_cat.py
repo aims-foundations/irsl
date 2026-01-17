@@ -1,3 +1,4 @@
+### TODO: only cat on test set
 import argparse
 from pathlib import Path
 import sys
@@ -84,13 +85,12 @@ for bench in tqdm(bench_names):
             sharex=True,
         )
         plot_idxs = torch.randperm(n_models)[:max_plot].tolist()
-        axes_list = axes if isinstance(axes, (list, np.ndarray)) else [axes]
-        for i_plot, ax in enumerate(axes_list[:max_plot]):
+        for i_plot, ax in enumerate(axes[:max_plot]):
             model_idx = plot_idxs[i_plot]
             ax.plot(np.arange(thetass.shape[-1]), thetass[model_idx].cpu().numpy())
             ax.set_ylabel(r"$\theta$", fontsize=12)
             ax.tick_params(axis="both", labelsize=10)
-        axes_list[-1].set_xlabel("Budget", fontsize=12)
+        axes[-1].set_xlabel("Budget", fontsize=12)
         plt.tight_layout()
         plt.savefig(fig_name, dpi=100, bbox_inches="tight")
         plt.close()
