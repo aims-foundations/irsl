@@ -400,4 +400,3 @@ def visualize_response_matrix(results, value, filename):
         cbar.set_ticklabels(["-1", "0", "1"])
         plt.savefig(filename, dpi=600, bbox_inches="tight")
         plt.close()
-        

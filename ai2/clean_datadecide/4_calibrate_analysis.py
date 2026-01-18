@@ -33,7 +33,7 @@ unique_bench_names = sorted(bench_names.unique())
 zs = train_df.columns.get_level_values("difficulty").to_numpy(dtype=np.float32)
 
 for bench in unique_bench_names:
-    thetas_bench = train_df.index.get_level_values(f"ability_{bench}").to_numpy(dtype=np.float32)
+    bench_thetas = train_df.index.get_level_values(f"ability_{bench}").to_numpy(dtype=np.float32)
     
     bench_mask = bench_names == bench
     bench_ys = ys[:, bench_mask]
@@ -41,7 +41,7 @@ for bench in unique_bench_names:
 
     bench_n_items = bench_ys.shape[1]
     sample_idxs = rng.choice(bench_n_items, size=args.sample_questions, replace=False)
-    theta_arange = np.linspace(thetas_bench.min() - 1, thetas_bench.max() + 1, 200)
+    theta_arange = np.linspace(bench_thetas.min() - 1, bench_thetas.max() + 1, 200)
 
     for idx in sample_idxs:
         z_j = bench_zs[idx]
@@ -50,7 +50,7 @@ for bench in unique_bench_names:
 
         with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
             plt.figure(figsize=(6, 4))
-            plt.scatter(thetas_bench, y_j, s=10, label="Responses")
+            plt.scatter(bench_thetas, y_j, s=10, label="Responses")
             plt.plot(theta_arange, curve, color="red", label="IRT Prob")
             plt.xlabel(r"$\theta$", fontsize=14)
             plt.ylabel("IRT Prob / Responses", fontsize=14)
