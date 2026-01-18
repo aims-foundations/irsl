@@ -8,20 +8,19 @@ import pandas as pd
 import torch
 from scipy.stats import spearmanr
 from tqdm import tqdm
-from torch.optim import LBFGS
 
 BASE_DIR = Path(__file__).resolve().parent / "data"
 sys.path.append(str(BASE_DIR.parent.parent.parent))
-from utils import calibrate, calibrate_theta
+from utils import calibrate_1pl_z, calibrate_1pl_theta
 
 INPUT_PROB_PATH = BASE_DIR / "3_prob_matrix.parquet"
 INPUT_BINARY_PATH = BASE_DIR / "3_binary_matrix.parquet"
 OUTPUT_PROB_PATH = BASE_DIR / "4_prob_matrix_calibrated.parquet"
 OUTPUT_BINARY_PATH = BASE_DIR / "4_binary_matrix_calibrated.parquet"
 DRY_RUN_N_COLS = 128
-BATCH_SIZE = 32
-# BATCH_SIZE = 4096
-CUDAS = [0, 1, 2, 3]
+DRY_RUN_BATCH_SIZE = 32
+NON_DRY_RUN_BATCH_SIZE = 4096
+CUDAS = [0, 1]
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dry-run", action="store_true")
@@ -30,6 +29,7 @@ args = parser.parse_args()
 
 input_path = INPUT_PROB_PATH if args.loss_kind == "beta" else INPUT_BINARY_PATH
 output_path = OUTPUT_PROB_PATH if args.loss_kind == "beta" else OUTPUT_BINARY_PATH
+batch_size = DRY_RUN_BATCH_SIZE if args.dry_run else NON_DRY_RUN_BATCH_SIZE
 
 resmat_df = pd.read_parquet(input_path)
 
@@ -44,10 +44,10 @@ print(f"Train shape: {train_df.shape}, Test shape: {test_df.shape}")
 
 # fit z
 print("# fit z")
-def _calibrate_chunk(chunk_array: np.ndarray, device_str: str) -> np.ndarray:
+def _calibrate_z_chunk(chunk_array: np.ndarray, device_str: str) -> np.ndarray:
     torch.cuda.set_device(int(device_str.split(":")[-1]))
     mat_chunk = torch.tensor(chunk_array, dtype=torch.float32, device=device_str)
-    return calibrate(mat_chunk, device=device_str, batch_size=BATCH_SIZE, loss_kind=args.loss_kind)
+    return calibrate_1pl_z(mat_chunk, device=device_str, batch_size=batch_size, loss_kind=args.loss_kind)
 
 train_np = train_df.to_numpy(dtype=np.float32)
 n_items = train_np.shape[1]
@@ -60,7 +60,7 @@ with ProcessPoolExecutor(max_workers=len(chunks)) as executor:
     futures = []
     for device_idx, (start, end) in enumerate(chunks):
         device_str = f"cuda:{CUDAS[device_idx]}"
-        fut = executor.submit(_calibrate_chunk, train_np[:, start:end], device_str)
+        fut = executor.submit(_calibrate_z_chunk, train_np[:, start:end], device_str)
         futures.append((start, end, fut))
     for start, end, fut in futures:
         z_chunk = fut.result()
@@ -87,10 +87,10 @@ print(f"Processing {len(unique_bench_names)} benches: {unique_bench_names}")
 bench_thetas = {}
 for bench in tqdm(unique_bench_names, desc="benches"):
     bench_mask = bench_names == bench    
-    bench_theta = calibrate_theta(
-        resmat=torch.tensor(train_np[:, bench_mask]),
+    bench_theta = calibrate_1pl_theta(
+        resmat=torch.tensor(train_np[:, bench_mask], dtype=torch.float32),
         device=theta_device,
-        zs=torch.tensor(z_optimized[bench_mask]),
+        zs=torch.tensor(z_optimized[bench_mask], dtype=torch.float32),
         loss_kind=args.loss_kind,
     )
     bench_thetas[bench] = bench_theta

@@ -2,10 +2,8 @@ import argparse
 from pathlib import Path
 import numpy as np
 import pandas as pd
-import torch
 from matplotlib import pyplot as plt
 from scipy.special import expit
-from torch.optim import LBFGS
 from tueplots import bundles
 bundles.icml2024()
 rng = np.random.default_rng(0)
@@ -18,42 +16,48 @@ parser.add_argument("--sample-questions", type=int, default=5)
 args = parser.parse_args()
 
 input_path = (
-    BASE_DIR / "4_prob_matrix_with_difficulty.parquet"
+    BASE_DIR / "4_prob_matrix_calibrated.parquet"
     if args.loss_kind == "beta"
-    else BASE_DIR / "4_binary_matrix_with_difficulty.parquet"
+    else BASE_DIR / "4_binary_matrix_calibrated.parquet"
 )
-output_root = Path(__file__).resolve().parent / "results" / "4_IRT_curve_train"
+output_root = Path(__file__).resolve().parent / "results" / "4_calibrate_analysis"
 output_root.mkdir(parents=True, exist_ok=True)
 
 df = pd.read_parquet(input_path)
-print(df.shape)
 train_df = df[df.index.get_level_values("model_split") == "train"].copy()
-question_ids = train_df.columns.get_level_values("question_id")
-bench_names = question_ids.map(lambda q: q.rsplit("_", 1)[0])
-bench_names = bench_names.map(lambda b: "mmlu" if b.startswith("mmlu") else b).unique()
-print(f"Processing {len(bench_names)} benches: {bench_names.tolist()}")
+ys = train_df.to_numpy(dtype=np.float32)
+bench_names = train_df.columns.get_level_values("bench_name").map(
+    lambda b: "mmlu" if b.startswith("mmlu") else b
+)
+unique_bench_names = sorted(bench_names.unique())
+zs = train_df.columns.get_level_values("difficulty").to_numpy(dtype=np.float32)
 
+for bench in unique_bench_names:
+    thetas_bench = train_df.index.get_level_values(f"ability_{bench}").to_numpy(dtype=np.float32)
+    
+    bench_mask = bench_names == bench
+    bench_ys = ys[:, bench_mask]
+    bench_zs = zs[bench_mask]
 
+    bench_n_items = bench_ys.shape[1]
+    sample_idxs = rng.choice(bench_n_items, size=args.sample_questions, replace=False)
+    theta_arange = np.linspace(thetas_bench.min() - 1, thetas_bench.max() + 1, 200)
 
-    sample_idxs = rng.choice(n_items, size=args.sample_questions, replace=False)
-    theta_range = torch.linspace(thetas.min() - 1, thetas.max() + 1, steps=200, device=device)
-
-    theta_np = thetas.cpu().numpy()
     for idx in sample_idxs:
-        qid = bench_cols.get_level_values("question_id")[idx]
-        z_j = zs[idx].item()
-        resp = data_np[:, idx]
-        curve = expit(theta_range.cpu().numpy() + z_j)
+        z_j = bench_zs[idx]
+        y_j = bench_ys[:, idx]
+        curve = expit(theta_arange + z_j)
 
-        plt.figure(figsize=(6, 4))
-        plt.scatter(theta_np, resp, s=10, label="responses")
-        plt.plot(theta_range.cpu().numpy(), curve, color="red", label="IRT curve")
-        plt.xlabel(r"$\theta$", fontsize=14)
-        plt.ylabel("Probability", fontsize=14)
-        plt.ylim(0, 1)
-        plt.legend(fontsize=12)
-        plt.title(qid, fontsize=14)
-        plt.tight_layout()
-        out_path = output_root / f"{args.loss_kind}_{qid}.png"
-        plt.savefig(out_path, dpi=200, bbox_inches="tight")
-        plt.close()
+        with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
+            plt.figure(figsize=(6, 4))
+            plt.scatter(thetas_bench, y_j, s=10, label="Responses")
+            plt.plot(theta_arange, curve, color="red", label="IRT Prob")
+            plt.xlabel(r"$\theta$", fontsize=14)
+            plt.ylabel("IRT Prob / Responses", fontsize=14)
+            plt.ylim(0, 1)
+            plt.legend(fontsize=12)
+            plt.title(f"{bench}, {idx}", fontsize=14)
+            plt.tight_layout()
+            out_path = output_root / f"{args.loss_kind}_{bench}_{idx}.png"
+            plt.savefig(out_path, dpi=300, bbox_inches="tight")
+            plt.close()

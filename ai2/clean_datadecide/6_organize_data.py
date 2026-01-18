@@ -31,3 +31,22 @@ max_steps = (
 )
 frame = frame.merge(max_steps, on=group_cols, how="left")
 frame["model_is_final_step"] = frame["model_step_numeric"] == frame["max_model_step"]
+
+
+def translate_str(s): # e.g., "300B", "64M"
+    if s.endswith("M"):
+        return float(s[:-1]) * 1e6
+    elif s.endswith("B"):
+        return float(s[:-1]) * 1e9
+    elif s.endswith("T"):
+        return float(s[:-1]) * 1e12
+    else:
+        raise ValueError(f"Unrecognized size format in: {s}")
+
+
+def calculate_flop(s):
+    traindata_size = translate_str(s.split("_")[-1])
+    model_size = translate_str(s.split("_")[-2])
+    return traindata_size * model_size
+    # return traindata_size * model_size / 1e21
+    
