@@ -40,18 +40,20 @@ MODEL2PARA = {
     '750M': 681_297_408,
     '1B': 1_176_832_000
 }
+
 def calculate_flops(
     model_size: str,
     step: int,
 ) -> float:
-    n = MODEL2PARA[model_size]
-    d = MODEL2BATCH[model_size] * step * SEQUENCE_LENGTH
-    return float(n * d * 6)
+    n = float(MODEL2PARA[model_size])
+    d = float(MODEL2BATCH[model_size]) * float(step) * float(SEQUENCE_LENGTH)
+    return n * d * 6.0
 
 INPUT_BINARY = BASE_DIR / "5_binary_matrix_cated.parquet"
 INPUT_PROB = BASE_DIR / "5_prob_matrix_cated.parquet"
 INPUT_BPB = BASE_DIR / "3_bpb_matrix.parquet"
-OUTPUT_PATH = BASE_DIR / "6_organized.parquet"
+LONG_OUTPUT_PATH = BASE_DIR / "6_long.parquet"
+DIFFICULTY_OUTPUT_PATH = BASE_DIR / "6_difficulty.parquet"
 
 binary_df = pd.read_parquet(INPUT_BINARY)
 binary_test_df = binary_df[binary_df.index.get_level_values("model_split") == "test"].copy()
@@ -102,28 +104,39 @@ bench_names = binary_test_df.columns.get_level_values("bench_name").map(
     lambda b: "mmlu" if b.startswith("mmlu") else b
 )
 unique_bench_names = sorted(bench_names.unique())
-binary_zs = binary_test_df.columns.get_level_values("difficulty").to_numpy(dtype=np.float32)
-beta_zs = prob_test_df.columns.get_level_values("difficulty").to_numpy(dtype=np.float32)
 binary_ys = binary_test_df.to_numpy(dtype=np.float32)
 beta_ys = prob_test_df.to_numpy(dtype=np.float32)
 bpb_ys = bpb_test_df.to_numpy(dtype=np.float32)
+binary_zs = binary_test_df.columns.get_level_values("difficulty").to_numpy(dtype=np.float32)
+beta_zs = prob_test_df.columns.get_level_values("difficulty").to_numpy(dtype=np.float32)
+difficulty_df = pd.DataFrame({"binary_difficulty": binary_zs, "beta_difficulty": beta_zs})
+difficulty_df.to_parquet(DIFFICULTY_OUTPUT_PATH)
 
 for bench in unique_bench_names:
     bench_mask = bench_names == bench
     bench_binary_ys = binary_ys[:, bench_mask]
     bench_beta_ys = beta_ys[:, bench_mask]
     bench_bpb_ys = bpb_ys[:, bench_mask]
-    bench_binary_zs = binary_zs[bench_mask]
-    bench_beta_zs = beta_zs[bench_mask]
-    sampled_idx = rng.choice(len(bench_binary_ys.shape[-1]), size=BUDGET, replace=False)
+    sampled_idx = rng.choice(bench_binary_ys.shape[-1], size=BUDGET, replace=False)
 
-    long_df[f"difficulties_{bench}_binary"] = [bench_binary_zs.tolist()] * len(long_df)
-    long_df[f"difficulties_{bench}_beta"] = [bench_beta_zs.tolist()] * len(long_df)
-    long_df[f"acc_full_{bench}"] = bench_binary_ys.mean(axis=1, skipna=True)
-    long_df[f"acc_sub_{bench}"] = bench_binary_ys[:, sampled_idx].mean(axis=1, skipna=True)
-    long_df[f"p_correct_choice_full_{bench}"] = bench_beta_ys.mean(axis=1, skipna=True)
-    long_df[f"p_correct_choice_sub_{bench}"] = bench_beta_ys[:, sampled_idx].mean(axis=1, skipna=True)
-    long_df[f"correct_bpb_full_{bench}"] = bench_bpb_ys.mean(axis=1, skipna=True)
-    long_df[f"correct_bpb_sub_{bench}"] = bench_bpb_ys[:, sampled_idx].mean(axis=1, skipna=True)
+    long_df[f"acc_full_{bench}"] = np.nanmean(bench_binary_ys, axis=1)
+    long_df[f"acc_sub_{bench}"] = np.nanmean(bench_binary_ys[:, sampled_idx], axis=1)
+    long_df[f"p_correct_choice_full_{bench}"] = np.nanmean(bench_beta_ys, axis=1)
+    long_df[f"p_correct_choice_sub_{bench}"] = np.nanmean(bench_beta_ys[:, sampled_idx], axis=1)
+    long_df[f"correct_bpb_full_{bench}"] = np.nanmean(bench_bpb_ys, axis=1)
+    long_df[f"correct_bpb_sub_{bench}"] = np.nanmean(bench_bpb_ys[:, sampled_idx], axis=1)
 
-long_df.to_parquet(OUTPUT_PATH)
+pd.set_option("display.max_columns", None)
+pd.set_option("display.max_rows", None)
+print("long_df shape:", long_df.shape)
+print("long_df head:\n", long_df.head(1))
+print("long_df dtypes:\n", long_df.dtypes)
+na_pct_all = (long_df.isna().mean() * 100).sort_values(ascending=False)
+print("NaN percentage per column:")
+for col, pct in na_pct_all.items():
+    print(f"  {col}: {pct:.2f}%")
+correct_bpb_cols = [c for c in long_df.columns if c.startswith("correct_bpb_")]
+correct_bpb_nan_mask = long_df[correct_bpb_cols].isna().any(axis=1)
+print("Rows with NaN in correct_bpb_* columns (model_data_mix, model_size, model_step, FLOP):")
+print(long_df.loc[correct_bpb_nan_mask, ["model_data_mix", "model_size", "model_step", "FLOP"]])
+long_df.to_parquet(LONG_OUTPUT_PATH)

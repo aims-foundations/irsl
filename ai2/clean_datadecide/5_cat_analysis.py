@@ -8,7 +8,6 @@ from scipy.special import expit
 from scipy.stats import spearmanr
 from tueplots import bundles
 from tqdm import tqdm
-
 bundles.icml2024()
 
 parser = argparse.ArgumentParser()
@@ -84,8 +83,7 @@ for bench in tqdm(unique_bench_names, desc="benches"):
             plt.close(fig)
 
     # IRT curves per question (sampled)
-    bench_n_items = bench_ys.shape[1]
-    sample_idxs = np.random.default_rng(0).choice(bench_n_items, size=args.sample_questions, replace=False)
+    sample_idxs = np.random.default_rng(0).choice(bench_ys.shape[1], size=args.sample_questions, replace=False)
     theta_arange = np.linspace(bench_thetas.min() - 1, bench_thetas.max() + 1, 200)
 
     for idx in sample_idxs:
@@ -103,6 +101,6 @@ for bench in tqdm(unique_bench_names, desc="benches"):
             plt.legend(fontsize=12)
             plt.title(f"{bench}, {idx}", fontsize=14)
             plt.tight_layout()
-            out_path = output_root / f"{args.loss_kind}_{bench}_{idx}.png"
+            out_path = curve_root / f"{args.loss_kind}_{bench}_{idx}.png"
             plt.savefig(out_path, dpi=300, bbox_inches="tight")
             plt.close()

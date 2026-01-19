@@ -39,8 +39,7 @@ for bench in unique_bench_names:
     bench_ys = ys[:, bench_mask]
     bench_zs = zs[bench_mask]
 
-    bench_n_items = bench_ys.shape[1]
-    sample_idxs = rng.choice(bench_n_items, size=args.sample_questions, replace=False)
+    sample_idxs = rng.choice(bench_ys.shape[1], size=args.sample_questions, replace=False)
     theta_arange = np.linspace(bench_thetas.min() - 1, bench_thetas.max() + 1, 200)
 
     for idx in sample_idxs:

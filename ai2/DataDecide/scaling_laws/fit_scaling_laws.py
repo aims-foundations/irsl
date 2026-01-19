@@ -81,33 +81,33 @@ SCALING_LAW_CONFIGS = [
 
 TARGET_SIZE = '1B'
 
-def generate_setups(setup_types, model_sizes):
-    """
-    Generate fitting configurations by excluding different combinations of small models.
-    >>> [
-    >>>     3_param-intermediate
-    >>>     3_param-intermediate-no_8M
-    >>>     3_param-intermediate-no_8M_no_10M
-    >>>     3_param-intermediate-no_8M_no_10M_no_14M
-    >>>     3_param-intermediate-no_8M_no_10M_no_14M_no_16M
-    >>>     ...
-    >>> ]
-    """
-    def all_combinations(lst):
-        result = []
-        for end in range(3, len(lst)+1):
-            result.append(lst[:end])
-        for start in range(1, len(lst) - 2):
-            result.append(lst[start:])
-        return result
+# def generate_setups(setup_types, model_sizes):
+#     """
+#     Generate fitting configurations by excluding different combinations of small models.
+#     >>> [
+#     >>>     3_param-intermediate
+#     >>>     3_param-intermediate-no_8M
+#     >>>     3_param-intermediate-no_8M_no_10M
+#     >>>     3_param-intermediate-no_8M_no_10M_no_14M
+#     >>>     3_param-intermediate-no_8M_no_10M_no_14M_no_16M
+#     >>>     ...
+#     >>> ]
+#     """
+#     def all_combinations(lst):
+#         result = []
+#         for end in range(3, len(lst)+1):
+#             result.append(lst[:end])
+#         for start in range(1, len(lst) - 2):
+#             result.append(lst[start:])
+#         return result
 
-    setups = []
-    for setup_type in setup_types:
-        for combination in all_combinations(model_sizes):
-            compliment = [size for size in model_sizes if size not in combination]
-            setup_name = f"{setup_type}" + (f"-no_{'_no_'.join(compliment)}" if compliment else "")
-            setups.append(setup_name)
-    return setups
+#     setups = []
+#     for setup_type in setup_types:
+#         for combination in all_combinations(model_sizes):
+#             compliment = [size for size in model_sizes if size not in combination]
+#             setup_name = f"{setup_type}" + (f"-no_{'_no_'.join(compliment)}" if compliment else "")
+#             setups.append(setup_name)
+#     return setups
 
 def run_ladder_fits(data_path, results_path, dry_run=False):
     local_path = pull_predictions_from_hf(data_path, split_name='macro_avg')
@@ -162,7 +162,7 @@ def run_ladder_fits(data_path, results_path, dry_run=False):
             tasks=TASKS,
             setups=SETUPS,
             # y_metrics=ALL_METRICS,
-            y_metrics= ["primary_metric", "acc_per_char", "correct_prob_per_char", "acc_raw"],
+            y_metrics= ["acc_per_char", "correct_prob_per_char"],
             x_metric="correct_logit_per_byte",
             quiet=True
         )
@@ -185,8 +185,8 @@ if __name__ == '__main__':
                       help='Path to save results CSV (default: ladder_predictions.csv)')
     parser.add_argument('--dry-run', action='store_true',
                       help='Run on subset of data for testing')
-    parser.add_argument('--push-to-hf', type=str,
-                      help='HuggingFace dataset name to push results to (optional)')
+    # parser.add_argument('--push-to-hf', type=str,
+    #                   help='HuggingFace dataset name to push results to (optional)')
     args = parser.parse_args()
     
     data_path    = args.data_path
@@ -194,11 +194,11 @@ if __name__ == '__main__':
     
     run_ladder_fits(data_path, results_path, dry_run=args.dry_run)
 
-    if args.push_to_hf:
-        push_parquet_to_hf(
-            parquet_file_path=results_path,
-            hf_dataset_name=args.push_to_hf,
-            split_name='scaling_law_fit',
-            overwrite=True,
-            private=True,
-        )
+    # if args.push_to_hf:
+    #     push_parquet_to_hf(
+    #         parquet_file_path=results_path,
+    #         hf_dataset_name=args.push_to_hf,
+    #         split_name='scaling_law_fit',
+    #         overwrite=True,
+    #         private=True,
+    #     )
