@@ -77,7 +77,8 @@ model_index_names = ["model_data_mix", "model_size", "model_step"]
 assert binary_base_index[model_index_names].equals(prob_base_index[model_index_names]) \
     and binary_base_index[model_index_names].equals(bpb_base_index[model_index_names])
 
-model_index = binary_base_index[model_index_names]
+model_index = binary_base_index[model_index_names].copy()
+model_index["model_step"] = model_index["model_step"].astype(int)
 max_model_step = (
     model_index.groupby(["model_data_mix", "model_size"], as_index=False)["model_step"]
     .max()
@@ -92,7 +93,9 @@ model_index.loc[final_step_mask, "FLOP"] = [
         model_index.loc[final_step_mask, "model_size"], model_index.loc[final_step_mask, "model_step"]
     )
 ]
-assert model_index[model_index_names].equals(binary_base_index[model_index_names])
+assert model_index[model_index_names].equals(
+    binary_base_index[model_index_names].assign(model_step=binary_base_index["model_step"].astype(int))
+)
 
 long_df = model_index[["model_data_mix", "model_size", "model_step", "FLOP"]].copy()
 ability_index_names = [c for c in binary_base_index.columns if c.startswith("ability_")]

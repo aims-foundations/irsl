@@ -148,10 +148,13 @@ def run_ladder_fits(data_path, results_path, dry_run=False):
         results = fit_all_mixes(
             df,
             all_models=MODELS,
-            mixes=MIXES[:2], # only test with 2 data mixes
-            tasks=TASKS[:2], # only test with 2 tasks
+            # mixes=MIXES[:2], # only test with 2 data mixes
+            mixes=MIXES[:1],
+            # tasks=TASKS[:2], # only test with 2 tasks
+            tasks=TASKS[:1],
             setups=SETUPS,
-            y_metrics=["primary_metric", "acc_per_char", "correct_prob_per_char"], # only test with 3 metrics
+            # y_metrics=["primary_metric", "acc_per_char", "correct_prob_per_char"], # only test with 3 metrics
+            y_metrics=["acc_per_char", "correct_prob_per_char"], # only test with 3 metrics
             x_metric="correct_logit_per_byte",
         )
     else:

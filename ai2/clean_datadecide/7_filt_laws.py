@@ -8,6 +8,8 @@ import pandas as pd
 from ladder.fitting.step1_flops import fit_step1 as fit_step1_flops
 from ladder.fitting.step2 import fit_step2
 
+# TODO: last 10% average bpb and theta
+# use last 90% of checkpoints (maybe we already filter out?)
 
 def get_bench_names(df: pd.DataFrame) -> list[str]:
     bpb_sub_cols = [c for c in df.columns if c.startswith("correct_bpb_sub_")]
