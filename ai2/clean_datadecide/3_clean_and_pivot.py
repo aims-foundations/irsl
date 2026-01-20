@@ -15,6 +15,7 @@ FIG_DIR.mkdir(parents=True, exist_ok=True)
 PROB_THRESHOLD = 0.15
 
 frame = pd.read_parquet(INPUT_PATH)
+breakpoint()
 
 ### 1. clean
 print("### 1. clean")

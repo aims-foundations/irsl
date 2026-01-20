@@ -9,6 +9,46 @@ from torch.distributions import Bernoulli
 import numpy as np
 from torch.optim import LBFGS
 
+MODEL2BATCH = {
+    '4M': 32, # batch_size=32, gpus=8
+    '6M': 32,
+    '8M': 32,
+    '10M': 32,
+    '14M': 32,
+    '16M': 32,
+    '20M': 64,
+    '60M': 96,
+    '90M': 160,
+    '150M': 192,
+    '300M': 320,
+    '530M': 448,
+    '750M': 576,
+    '1B': 704
+}
+MODEL2PARA = {
+    '4M': 3_744_832,
+    '6M': 6_010_464,
+    '8M': 8_538_240,
+    '10M': 9_900_432,
+    '12M': 12_066_600,
+    '14M': 14_380_224,
+    '16M': 16_004_560,
+    '20M': 19_101_888,
+    '60M': 57_078_144,
+    '90M': 97_946_640,
+    '150M': 151_898_880,
+    '300M': 319_980_544,
+    '530M': 530_074_944,
+    '750M': 681_297_408,
+    '1B': 1_176_832_000
+}
+
+def calculate_flops(model_size: str, step: int) -> float:
+    SEQUENCE_LENGTH = 2048
+    n = float(MODEL2PARA[model_size])
+    d = float(MODEL2BATCH[model_size]) * float(step) * float(SEQUENCE_LENGTH)
+    return n * d * 6.0
+
 def calibrate_1pl_z(
     resmat: torch.Tensor,
     device: str,

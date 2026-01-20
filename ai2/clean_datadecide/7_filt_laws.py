@@ -1,139 +1,211 @@
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
-
 import pandas as pd
+import numpy as np
+import pickle
+import sys
+from collections import defaultdict
+from ladder.fitting.step1_flops import fit_step1 as ladder_fit_step1
+from ladder.fitting.step2 import fit_step2 as ladder_fit_step2
+from scipy.stats import linregress
+from scipy.special import expit
+from tqdm import tqdm
 
-from ladder.fitting.step1_flops import fit_step1 as fit_step1_flops
-from ladder.fitting.step2 import fit_step2
+BASE_DIR = Path(__file__).resolve().parent / "data"
+sys.path.append(str(BASE_DIR.parent.parent.parent))
+from utils import MODEL2PARA
 
-# TODO: last 10% average bpb and theta
-# use last 90% of checkpoints (maybe we already filter out?)
+# function forms
+# - classic:
+#   - step1: 
+#     - correct_bpb_sub VS FLOP: f1, fit_step1_classic
+#   - step2:
+#     - acc_per_char_sub VS correct_bpb_sub: f21, fit_step2_classic
+#     - p_correct_choice_sub VS correct_bpb_sub: f22, fit_step2_classic
+# - IRT:
+#   - step1:
+#     - theta_binary VS FLOP: g12, fit_step1_irt
+#     - theta_beta VS FLOP: g12, fit_step1_irt
 
-def get_bench_names(df: pd.DataFrame) -> list[str]:
-    bpb_sub_cols = [c for c in df.columns if c.startswith("correct_bpb_sub_")]
-    return sorted({c[len("correct_bpb_sub_"):] for c in bpb_sub_cols})
+# output_dict = {
+#     bench (str): {
+#         model_data_mix (str): {
+#             max_model_size (int): {
+#                 "classic": {
+#                     "data": {
+#                         "step1": [(FLOP (float), bpb (float)), ...],
+#                         "step2": [(bpb (float), acc (float), prob (float)), ...],
+#                     },
+#                     "paras": {
+#                         "step1": f1_paras (list of float, len = 3),
+#                         "step2_acc": f21_paras (list of float, len = 4),
+#                         "step2_prob": f22_paras (list of float, len = 4),
+#                     },
+#                     "pred_1B": {
+#                         "acc": float,
+#                         "prob": float,
+#                     }
+#                 },
+#                 "irt": {
+#                     "data": {
+#                         "step1": [(FLOP (float), theta_binary (float), theta_beta (float)), ...],
+#                     },
+#                     "paras": {
+#                         "step1_binary": g11_paras (list of float, len = 2),
+#                         "step1_beta": g12_paras (list of float, len = 2),
+#                     },
+#                     "pred_1B": {
+#                         "acc": float,
+#                         "prob": float,
+#                     }
+#                 }
+#             }
+#         }
+#     }
+# }
 
+INPUT_PATH = BASE_DIR / "6_long.parquet"
+DIFF_INPUT_PATH = BASE_DIR / "6_difficulty.parquet"
+OUTPUT_PATH = BASE_DIR / "7_filt_laws.pkl"
 
-def build_step1_data(df: pd.DataFrame, bpb_col: str) -> dict:
-    step1_df = df.loc[df["FLOP"].notna(), ["FLOP", bpb_col]].dropna()
-    if step1_df.empty:
-        return {}
-    return {
+def fn_step1_classic(flop, paras):
+    return np.exp(paras[0]) / flop ** paras[1] + paras[2]
+
+def fit_step1_classic(flops, bpbs): # fn_step1_classic
+    data = {
         "all": {
-            "fs": step1_df["FLOP"].tolist(),
-            "xs": step1_df[bpb_col].tolist(),
+            "fs": flops,
+            "xs": bpbs,
             "mode": "train",
         }
     }
+    coeffs, _ = ladder_fit_step1(data, y_metric="rc_bpb", use_two_param=False)
+    return coeffs.tolist()
 
+def fn_step2_classic(bpb, paras): # 4-parameter sigmoid
+    return paras[0] / (1 + np.exp(-paras[2] * (bpb - paras[1]))) + paras[3]
 
-def build_step2_data(df: pd.DataFrame, bpb_col: str, metric_col: str) -> dict:
-    step2_df = df.loc[:, [bpb_col, metric_col]].dropna()
-    if step2_df.empty:
-        return {}
-    return {
+def fit_step2_classic(bpbs, metrics): # fn_step2_classic
+    data = {
         "all": {
-            "xs": step2_df[bpb_col].tolist(),
-            "ys": step2_df[metric_col].tolist(),
+            "xs": bpbs,
+            "ys": metrics,
             "mode": "train",
         }
     }
-
-
-def fit_baseline_for_bench(
-    df_mix: pd.DataFrame,
-    bench: str,
-    metric: str,
-) -> dict | None:
-    bpb_col = f"correct_bpb_sub_{bench}"
-    metric_col = (
-        f"acc_sub_{bench}" if metric == "acc_sub" else f"p_correct_choice_sub_{bench}"
-    )
-    if bpb_col not in df_mix.columns or metric_col not in df_mix.columns:
-        return None
-
-    step1_data = build_step1_data(df_mix, bpb_col)
-    if not step1_data:
-        return None
-
-    step2_data = build_step2_data(df_mix, bpb_col, metric_col)
-    if not step2_data:
-        return None
-
-    step1_coeffs, _ = fit_step1_flops(step1_data, y_metric="rc_bpb", use_two_param=False)
-    step2_coeffs, _ = fit_step2(
-        step2_data,
+    coeffs, _ = ladder_fit_step2(
+        data,
         task_name=None,
         y_metric="rc_bpb",
         use_log_sigmoid=False,
         use_helper_points=False,
     )
+    return coeffs.tolist()
 
-    return {
-        "model_data_mix": str(df_mix["model_data_mix"].iloc[0]),
-        "bench": bench,
-        "metric": metric,
-        "step1_a": float(step1_coeffs[0]),
-        "step1_alpha": float(step1_coeffs[1]),
-        "step1_E": float(step1_coeffs[2]),
-        "step2_a": float(step2_coeffs[0]),
-        "step2_x0": float(step2_coeffs[1]),
-        "step2_k": float(step2_coeffs[2]),
-        "step2_b": float(step2_coeffs[3]),
-    }
+def fn_step1_irt(flop, paras): # theta = a * log(flops) + b
+    return paras[0] * np.log(flop) + paras[1]
 
-
-def run_baseline(input_path: Path, output_path: Path) -> pd.DataFrame:
-    df = pd.read_parquet(input_path)
-    bench_names = get_bench_names(df)
-    mixes = sorted(df["model_data_mix"].unique())
-
-    results: list[dict] = []
-    for mix in mixes:
-        df_mix = df[df["model_data_mix"] == mix]
-        for bench in bench_names:
-            for metric in ("acc_sub", "p_correct_choice_sub"):
-                try:
-                    result = fit_baseline_for_bench(df_mix, bench, metric)
-                except Exception:
-                    result = None
-                if result is not None:
-                    results.append(result)
-
-    results_df = pd.DataFrame(results)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    results_df.to_parquet(output_path, index=False)
-    return results_df
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Two-step baseline fit for DataDecide.")
-    base_dir = Path(__file__).resolve().parent
-    parser.add_argument(
-        "--input-path",
-        type=Path,
-        default=base_dir / "data" / "6_long.parquet",
-        help="Path to 6_long.parquet produced by 6_organize_data.py.",
-    )
-    parser.add_argument(
-        "--output-path",
-        type=Path,
-        default=base_dir / "data" / "7_baseline.parquet",
-        help="Path to write baseline fit results.",
-    )
-    return parser.parse_args()
-
-
-def main() -> None:
-    args = parse_args()
-    results_df = run_baseline(
-        input_path=args.input_path,
-        output_path=args.output_path,
-    )
-    print(f"Wrote {len(results_df):,} rows to {args.output_path}")
-
+def fit_step1_irt(flops, thetas): # fn_step1_irt
+    x, y = np.asarray(flops, dtype=float), np.asarray(thetas, dtype=float)
+    log_x = np.log(x)
+    res = linregress(log_x, y)
+    return [float(res.slope), float(res.intercept)]
 
 if __name__ == "__main__":
-    main()
+    def recursive_defaultdict():
+        return defaultdict(recursive_defaultdict)
+    output_dict = recursive_defaultdict()
+    
+    df_difficulty = pd.read_parquet(DIFF_INPUT_PATH)
+    binary_difficulty = df_difficulty["binary_difficulty"].to_numpy()
+    beta_difficulty = df_difficulty["beta_difficulty"].to_numpy()
+    
+    df_input = pd.read_parquet(INPUT_PATH)
+    df_input["model_size"] = df_input["model_size"].map(MODEL2PARA).astype(int)
+    unique_mixes = sorted(df_input["model_data_mix"].unique())
+    unique_model_sizes = sorted(int(v) for v in df_input["model_size"].unique())
+    binary_theta_cols = [c for c in df_input.columns if c.startswith("ability_") and c.endswith("_binary")]
+    unique_benches = sorted({c[len("ability_") : -len("_binary")] for c in binary_theta_cols})
+    max_flop = df_input["FLOP"].max() # 1B, final step
+    
+    for mix in tqdm(unique_mixes, desc="mix"):
+        df_mix = df_input[df_input["model_data_mix"] == mix]
+        for max_size in tqdm(unique_model_sizes[1:-1], desc="max_size", leave=False): # removing first and last
+            df_size = df_mix[df_mix["model_size"] <= max_size]
+            for bench in tqdm(unique_benches, desc="bench", leave=False):
+                # fit classic step 1
+                data_classic_step1 = df_size.loc[
+                    df_size["FLOP"].notna() & df_size[f"correct_bpb_sub_{bench}"].notna(),
+                    ["FLOP", f"correct_bpb_sub_{bench}"],
+                ]
+                output_dict[bench][mix][max_size]["classic"]["data"]["step1"] = list(
+                    data_classic_step1.itertuples(index=False, name=None)
+                )
+                
+                f1_paras = fit_step1_classic(
+                    flops=data_classic_step1["FLOP"].tolist(),
+                    bpbs=data_classic_step1[f"correct_bpb_sub_{bench}"].tolist(),
+                )
+                output_dict[bench][mix][max_size]["classic"]["paras"]["step1"] = f1_paras
+                
+                # fit irt step 1
+                data_irt_step1 = df_size.loc[
+                    df_size["FLOP"].notna(),
+                    ["FLOP", f"ability_{bench}_binary", f"ability_{bench}_prob"],
+                ]
+                output_dict[bench][mix][max_size]["irt"]["data"]["step1"] = list(
+                    data_irt_step1.itertuples(index=False, name=None)
+                )
+                
+                g11_paras = fit_step1_irt(
+                    flops=data_irt_step1["FLOP"].tolist(),
+                    thetas=data_irt_step1[f"ability_{bench}_binary"].tolist(),
+                )
+                output_dict[bench][mix][max_size]["irt"]["paras"]["step1_binary"] = g11_paras
+                g12_paras = fit_step1_irt(
+                    flops=data_irt_step1["FLOP"].tolist(),
+                    thetas=data_irt_step1[f"ability_{bench}_prob"].tolist(),
+                )
+                output_dict[bench][mix][max_size]["irt"]["paras"]["step1_beta"] = g12_paras
+                
+                # fit classic step 2
+                data_classic_step2 = df_size.loc[
+                    df_size[f"correct_bpb_sub_{bench}"].notna(),
+                    [f"correct_bpb_sub_{bench}", f"acc_sub_{bench}", f"p_correct_choice_sub_{bench}"],
+                ]
+                output_dict[bench][mix][max_size]["classic"]["data"]["step2"] = list(
+                    data_classic_step2.itertuples(index=False, name=None)
+                )
+                
+                f21_paras = fit_step2_classic(
+                    bpbs=data_classic_step2[f"correct_bpb_sub_{bench}"].tolist(),
+                    metrics=data_classic_step2[f"acc_sub_{bench}"].tolist(),
+                )
+                output_dict[bench][mix][max_size]["classic"]["paras"]["step2_acc"] = f21_paras
+                f22_paras = fit_step2_classic(
+                    bpbs=data_classic_step2[f"correct_bpb_sub_{bench}"].tolist(),
+                    metrics=data_classic_step2[f"p_correct_choice_sub_{bench}"].tolist(),
+                )
+                output_dict[bench][mix][max_size]["classic"]["paras"]["step2_prob"] = f22_paras
+                
+                # extrapolate
+                pred_acc_classic = fn_step2_classic(
+                    bpb=fn_step1_classic(flop=max_flop, paras=f1_paras),
+                    paras=f21_paras,
+                )
+                pred_prob_classic = fn_step2_classic(
+                    bpb=fn_step1_classic(flop=max_flop, paras=f1_paras),
+                    paras=f22_paras,
+                )
+                pred_theta_binary = fn_step1_irt(flop=max_flop, paras=g11_paras)
+                pred_theta_beta = fn_step1_irt(flop=max_flop, paras=g12_paras)
+                pred_acc_irt = expit(pred_theta_binary + binary_difficulty).mean()
+                pred_prob_irt = expit(pred_theta_beta + beta_difficulty).mean()
+
+                output_dict[bench][mix][max_size]["classic"]["pred_1B"]["acc"] = float(pred_acc_classic)
+                output_dict[bench][mix][max_size]["classic"]["pred_1B"]["prob"] = float(pred_prob_classic)
+                output_dict[bench][mix][max_size]["irt"]["pred_1B"]["acc"] = float(pred_acc_irt)
+                output_dict[bench][mix][max_size]["irt"]["pred_1B"]["prob"] = float(pred_prob_irt)
+    
+    with open(OUTPUT_PATH, "wb") as f:
+        pickle.dump(output_dict, f)

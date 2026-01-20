@@ -5,12 +5,12 @@ import numpy as np
 from tueplots import bundles
 bundles.icml2024()
 
-base_dir = Path(__file__).resolve().parent
-input_path = base_dir / "data" / "6_long.parquet"
-output_dir = base_dir / "results" / "6_theta_vs_flop"
+BASE_DIR = Path(__file__).resolve().parent
+INPUT_PATH = BASE_DIR / "data" / "6_long.parquet"
+OUTPUT_DIR = BASE_DIR / "results" / "6_theta_vs_flop"
 MAX_STEP_PERCENTAGE = 0.1
 
-df = pd.read_parquet(input_path)
+df = pd.read_parquet(INPUT_PATH)
 ability_cols = [c for c in df.columns if c.startswith("ability_") and c.endswith("_binary")]
 bench_names = sorted({c[len("ability_") : -len("_binary")] for c in ability_cols})
 mixes = sorted(df["model_data_mix"].unique())
@@ -18,7 +18,7 @@ mixes = sorted(df["model_data_mix"].unique())
 for bench in bench_names:
     binary_col = f"ability_{bench}_binary"
     beta_col = f"ability_{bench}_prob"
-    bench_dir = output_dir / bench
+    bench_dir = OUTPUT_DIR / bench
     bench_dir.mkdir(parents=True, exist_ok=True)
 
     for mix in mixes:
