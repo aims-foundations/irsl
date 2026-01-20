@@ -8,6 +8,7 @@ torch.manual_seed(0)
 from torch.distributions import Bernoulli
 import numpy as np
 from torch.optim import LBFGS
+from collections import defaultdict
 
 MODEL2BATCH = {
     '4M': 32, # batch_size=32, gpus=8
@@ -48,6 +49,14 @@ def calculate_flops(model_size: str, step: int) -> float:
     n = float(MODEL2PARA[model_size])
     d = float(MODEL2BATCH[model_size]) * float(step) * float(SEQUENCE_LENGTH)
     return n * d * 6.0
+
+def recursive_defaultdict():
+        return defaultdict(recursive_defaultdict)
+
+
+
+
+
 
 def calibrate_1pl_z(
     resmat: torch.Tensor,

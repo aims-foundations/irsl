@@ -4,7 +4,6 @@ import pandas as pd
 import numpy as np
 import pickle
 import sys
-from collections import defaultdict
 from ladder.fitting.step1_flops import fit_step1 as ladder_fit_step1
 from ladder.fitting.step2 import fit_step2 as ladder_fit_step2
 from scipy.stats import linregress
@@ -13,7 +12,7 @@ from tqdm import tqdm
 
 BASE_DIR = Path(__file__).resolve().parent / "data"
 sys.path.append(str(BASE_DIR.parent.parent.parent))
-from utils import MODEL2PARA
+from utils import MODEL2PARA, recursive_defaultdict
 
 # function forms
 # - classic:
@@ -31,6 +30,7 @@ from utils import MODEL2PARA
 #     bench (str): {
 #         model_data_mix (str): {
 #             max_model_size (int): {
+#                 "max_flop": float,
 #                 "classic": {
 #                     "data": {
 #                         "step1": [(FLOP (float), bpb (float)), ...],
@@ -112,8 +112,6 @@ def fit_step1_irt(flops, thetas): # fn_step1_irt
     return [float(res.slope), float(res.intercept)]
 
 if __name__ == "__main__":
-    def recursive_defaultdict():
-        return defaultdict(recursive_defaultdict)
     output_dict = recursive_defaultdict()
     
     df_difficulty = pd.read_parquet(DIFF_INPUT_PATH)
@@ -132,7 +130,10 @@ if __name__ == "__main__":
         df_mix = df_input[df_input["model_data_mix"] == mix]
         for max_size in tqdm(unique_model_sizes[1:-1], desc="max_size", leave=False): # removing first and last
             df_size = df_mix[df_mix["model_size"] <= max_size]
+            max_size_flop = df_size["FLOP"].max()
             for bench in tqdm(unique_benches, desc="bench", leave=False):
+                output_dict[bench][mix][max_size]["max_flop"] = float(max_size_flop)
+                
                 # fit classic step 1
                 data_classic_step1 = df_size.loc[
                     df_size["FLOP"].notna() & df_size[f"correct_bpb_sub_{bench}"].notna(),

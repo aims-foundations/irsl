@@ -12,66 +12,77 @@ MAX_STEP_PERCENTAGE = 0.1
 
 df = pd.read_parquet(INPUT_PATH)
 ability_cols = [c for c in df.columns if c.startswith("ability_") and c.endswith("_binary")]
-bench_names = sorted({c[len("ability_") : -len("_binary")] for c in ability_cols})
-mixes = sorted(df["model_data_mix"].unique())
+unique_benches = sorted({c[len("ability_") : -len("_binary")] for c in ability_cols})
 
-for bench in bench_names:
+for bench in unique_benches:
     binary_col = f"ability_{bench}_binary"
     beta_col = f"ability_{bench}_prob"
     bench_dir = OUTPUT_DIR / bench
     bench_dir.mkdir(parents=True, exist_ok=True)
 
-    for mix in mixes:
-        df_mix = df[df["model_data_mix"] == mix]
-        for kind, col in (("binary", binary_col), ("beta", beta_col)):
-            plot_df = df_mix.loc[df_mix["FLOP"].notna(), ["FLOP", col]]
+    plot_df_binary = df.loc[df["FLOP"].notna(), ["FLOP", binary_col]]
+    plot_df_beta = df.loc[df["FLOP"].notna(), ["FLOP", beta_col]]
 
-            avg_rows = []
-            for _, group in df_mix.groupby(["model_size"]):
-                group = group.loc[:, ["model_step", "FLOP", col]]
-                group = group.sort_values("model_step")
-                top_n = int(np.ceil(len(group) * MAX_STEP_PERCENTAGE))
-                avg_rows.append(
-                    {
-                        "FLOP": group["FLOP"].iloc[-1],
-                        col: float(group[col].tail(top_n).mean()),
-                    }
-                )
-            avg_df = pd.DataFrame(avg_rows)
+    avg_rows_binary = []
+    avg_rows_beta = []
+    for _, group in df.groupby(["model_data_mix", "model_size"]):
+        group = group.loc[:, ["model_step", "FLOP", binary_col, beta_col]]
+        group = group.sort_values("model_step")
+        top_n = int(np.ceil(len(group) * MAX_STEP_PERCENTAGE))
+        avg_rows_binary.append(
+            {
+                "FLOP": group["FLOP"].iloc[-1],
+                binary_col: float(group[binary_col].tail(top_n).mean()),
+            }
+        )
+        avg_rows_beta.append(
+            {
+                "FLOP": group["FLOP"].iloc[-1],
+                beta_col: float(group[beta_col].tail(top_n).mean()),
+            }
+        )
+    avg_df_binary = pd.DataFrame(avg_rows_binary)
+    avg_df_beta = pd.DataFrame(avg_rows_beta)
 
-            with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
-                fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(10, 8), sharey=True)
-                ax_linear, ax_log = axes[0]
-                ax_avg_linear, ax_avg_log = axes[1]
+    with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
+        fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(12, 9), sharey=True)
+        ax_linear, ax_log = axes[0]
+        ax_avg_linear, ax_avg_log = axes[1]
 
-                ax_linear.scatter(plot_df["FLOP"], plot_df[col], s=70, alpha=0.7)
-                ax_linear.set_xlabel("FLOP", fontsize=16)
-                ax_linear.set_ylabel(r"$\theta$", fontsize=16)
-                ax_linear.set_title(r"Final $\theta$", fontsize=18)
-                ax_linear.ticklabel_format(style="sci", axis="x", scilimits=(0, 0))
-                ax_linear.tick_params(axis="both", labelsize=14)
+        ax_linear.scatter(plot_df_binary["FLOP"], plot_df_binary[binary_col], s=80, alpha=0.7, label="binary")
+        ax_linear.scatter(plot_df_beta["FLOP"], plot_df_beta[beta_col], s=80, alpha=0.7, label="beta")
+        ax_linear.set_xlabel("FLOP", fontsize=20)
+        ax_linear.set_ylabel(r"$\theta$", fontsize=20)
+        ax_linear.set_title(r"Final $\theta$", fontsize=22)
+        ax_linear.ticklabel_format(style="sci", axis="x", scilimits=(0, 0))
+        ax_linear.tick_params(axis="both", labelsize=18)
+        ax_linear.legend(fontsize=16)
 
-                ax_log.scatter(plot_df["FLOP"], plot_df[col], s=70, alpha=0.7)
-                ax_log.set_xlabel("FLOP (log scale)", fontsize=16)
-                ax_log.set_xscale("log")
-                ax_log.set_title(r"Final $\theta$, Log Scale", fontsize=18)
-                ax_log.tick_params(axis="both", labelsize=14)
+        ax_log.scatter(plot_df_binary["FLOP"], plot_df_binary[binary_col], s=80, alpha=0.7)
+        ax_log.scatter(plot_df_beta["FLOP"], plot_df_beta[beta_col], s=80, alpha=0.7)
+        ax_log.set_xlabel("FLOP (log scale)", fontsize=20)
+        ax_log.set_xscale("log")
+        ax_log.set_title(r"Final $\theta$, Log Scale", fontsize=22)
+        ax_log.tick_params(axis="both", labelsize=18)
 
-                ax_avg_linear.scatter(avg_df["FLOP"], avg_df[col], s=70, alpha=0.7)
-                ax_avg_linear.set_xlabel("FLOP", fontsize=16)
-                ax_avg_linear.set_ylabel(r"$\theta$", fontsize=16)
-                ax_avg_linear.set_title(r"Avg Final 10\% $\theta$", fontsize=18)
-                ax_avg_linear.ticklabel_format(style="sci", axis="x", scilimits=(0, 0))
-                ax_avg_linear.tick_params(axis="both", labelsize=14)
+        ax_avg_linear.scatter(avg_df_binary["FLOP"], avg_df_binary[binary_col], s=80, alpha=0.7, label="binary")
+        ax_avg_linear.scatter(avg_df_beta["FLOP"], avg_df_beta[beta_col], s=80, alpha=0.7, label="beta")
+        ax_avg_linear.set_xlabel("FLOP", fontsize=20)
+        ax_avg_linear.set_ylabel(r"$\theta$", fontsize=20)
+        ax_avg_linear.set_title(r"Avg Final 10\% $\theta$", fontsize=22)
+        ax_avg_linear.ticklabel_format(style="sci", axis="x", scilimits=(0, 0))
+        ax_avg_linear.tick_params(axis="both", labelsize=18)
+        ax_avg_linear.legend(fontsize=16)
 
-                ax_avg_log.scatter(avg_df["FLOP"], avg_df[col], s=70, alpha=0.7)
-                ax_avg_log.set_xlabel("FLOP (log scale)", fontsize=16)
-                ax_avg_log.set_xscale("log")
-                ax_avg_log.set_title(r"Avg Final 10\% $\theta$, Log Scale", fontsize=18)
-                ax_avg_log.tick_params(axis="both", labelsize=14)
+        ax_avg_log.scatter(avg_df_binary["FLOP"], avg_df_binary[binary_col], s=80, alpha=0.7)
+        ax_avg_log.scatter(avg_df_beta["FLOP"], avg_df_beta[beta_col], s=80, alpha=0.7)
+        ax_avg_log.set_xlabel("FLOP (log scale)", fontsize=20)
+        ax_avg_log.set_xscale("log")
+        ax_avg_log.set_title(r"Avg Final 10\% $\theta$, Log Scale", fontsize=22)
+        ax_avg_log.tick_params(axis="both", labelsize=18)
 
-                fig.suptitle(f"{bench}, {mix}, {kind}", fontsize=18)
-                fig.tight_layout()
-                out_path = bench_dir / f"{kind}_{mix}_{bench}_theta_vs_flop.png"
-                fig.savefig(out_path, dpi=150)
-                plt.close(fig)
+        fig.suptitle(f"{bench}", fontsize=22)
+        fig.tight_layout()
+        out_path = bench_dir / f"{bench}_theta_vs_flop.png"
+        fig.savefig(out_path, dpi=150)
+        plt.close(fig)
