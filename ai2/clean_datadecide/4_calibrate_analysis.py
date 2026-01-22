@@ -7,6 +7,8 @@ from scipy.special import expit
 from tueplots import bundles
 bundles.icml2024()
 rng = np.random.default_rng(0)
+import warnings
+warnings.filterwarnings("ignore")
 
 BASE_DIR = Path(__file__).resolve().parent / "data"
 

@@ -9,6 +9,8 @@ from scipy.stats import spearmanr
 from tueplots import bundles
 from tqdm import tqdm
 bundles.icml2024()
+import warnings
+warnings.filterwarnings("ignore")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--loss-kind", type=str, default="beta", choices=["beta", "binary"])

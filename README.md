@@ -180,7 +180,7 @@ See [requirements.txt](requirements.txt) for complete list.
 The main IRT functions are in [utils.py](utils.py):
 
 - **`calibrate(probmat, ...)`**: Calibrate item difficulty parameters from probability response matrix
-- **`cat_binary_1pl(ys, zs, ...)`**: Run Binary-IRT CAT (Computerized Adaptive Testing)
+- **`cat_binary_1pl(ys, zs, ...)`**: Run Binary-IRT CAT (Computerized Adaptive Testing); returns `(thetas, selected_zs)`
 - **`beta_nll(...)`**: Beta negative log-likelihood loss for probability responses
 - **IRT models**: Rasch (1PL), 2PL models with sigmoid link functions
 

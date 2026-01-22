@@ -4,6 +4,8 @@ from matplotlib import pyplot as plt
 import numpy as np
 from tueplots import bundles
 bundles.icml2024()
+import warnings
+warnings.filterwarnings("ignore")
 
 BASE_DIR = Path(__file__).resolve().parent
 INPUT_PATH = BASE_DIR / "data" / "6_long.parquet"

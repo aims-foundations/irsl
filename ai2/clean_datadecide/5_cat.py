@@ -12,6 +12,7 @@ from tqdm import tqdm
 from tueplots import bundles
 bundles.icml2024()
 from huggingface_hub import snapshot_download
+import pickle
 
 BASE_DIR = Path(__file__).resolve().parent / "data"
 sys.path.append(str(BASE_DIR.parent.parent.parent))
@@ -33,10 +34,15 @@ input_path = (
     if args.loss_kind == "beta"
     else BASE_DIR / "4_binary_matrix_calibrated.parquet"
 )
-output_path = (
+matrix_output_path = (
     BASE_DIR / "5_prob_matrix_cated.parquet"
     if args.loss_kind == "beta"
     else BASE_DIR / "5_binary_matrix_cated.parquet"
+)
+asked_zs_output_path = (
+    BASE_DIR / "5_prob_asked_zs.pkl"
+    if args.loss_kind == "beta"
+    else BASE_DIR / "5_binary_asked_zs.pkl"
 )
 plots_dir = Path(__file__).resolve().parent / "results" / "5_cat"
 os.makedirs(plots_dir, exist_ok=True)
@@ -57,26 +63,29 @@ unique_bench_names = sorted(bench_names.unique())
 zs = test_df.columns.get_level_values("difficulty").to_numpy(dtype=np.float32)
 
 bench_thetas = {}
+bench_asked_zs = {}
 for bench in tqdm(unique_bench_names):
     bench_mask = bench_names == bench
     bench_test_ys = torch.tensor(test_ys[:, bench_mask], dtype=torch.float32)
     bench_zs = torch.tensor(zs[bench_mask], dtype=torch.float32)
     
     if args.loss_kind == "binary":
-        thetass = Parallel(n_jobs=n_cpus)(
+        results = Parallel(n_jobs=n_cpus)(
             delayed(cat_binary_1pl)(bench_test_ys[i], bench_zs, "cpu")
             for i in range(n_models)
         )
         fig_name = plots_dir / f"binary_{bench}_theta_convergence.png"
     else:
-        thetass = Parallel(n_jobs=n_cpus)(
+        results = Parallel(n_jobs=n_cpus)(
             delayed(cat_beta_1pl)(bench_test_ys[i], bench_zs, "cpu")
             for i in range(n_models)
         )
         fig_name = plots_dir / f"beta_{bench}_theta_convergence.png"
         
-    thetass = np.asarray(thetass, dtype=np.float32)
+    thetass = np.asarray([res[0] for res in results], dtype=np.float32)
+    asked_zs = [res[1] for res in results]
     bench_thetas[bench] = thetass[:, -1]
+    bench_asked_zs[bench] = asked_zs
 
     with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
         fig, axes = plt.subplots(
@@ -118,5 +127,15 @@ cols = combined.columns
 print("\nColumn index names:", cols.names)
 print("Column index sample (first 5):", list(islice(cols, 5)))
 
+asked_zs_df = pd.DataFrame(
+    {f"asked_difficulty_{b}": bench_asked_zs[b] for b in unique_bench_names},
+    index=test_df_reset.index,
+)# list of float
+asked_zs_dict = {}
+for idx, row in asked_zs_df.iterrows():
+    asked_zs_dict[idx] = row
+
 if not args.dry_run:
-    combined.to_parquet(output_path)
+    combined.to_parquet(matrix_output_path)
+    with open(asked_zs_output_path, "wb") as f:
+        pickle.dump(asked_zs_dict, f)

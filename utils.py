@@ -9,6 +9,9 @@ from torch.distributions import Bernoulli
 import numpy as np
 from torch.optim import LBFGS
 from collections import defaultdict
+from ladder.fitting.step1_flops import fit_step1 as ladder_fit_step1
+from ladder.fitting.step2 import fit_step2 as ladder_fit_step2
+from scipy.stats import linregress
 
 MODEL2BATCH = {
     '4M': 32, # batch_size=32, gpus=8
@@ -50,9 +53,55 @@ def calculate_flops(model_size: str, step: int) -> float:
     d = float(MODEL2BATCH[model_size]) * float(step) * float(SEQUENCE_LENGTH)
     return n * d * 6.0
 
+
+
+
+
 def recursive_defaultdict():
         return defaultdict(recursive_defaultdict)
 
+def fn_step1_classic(flop, paras):
+    return np.exp(paras[0]) / flop ** paras[1] + paras[2]
+
+def fit_step1_classic(flops, bpbs): # fn_step1_classic
+    data = {
+        "all": {
+            "fs": flops,
+            "xs": bpbs,
+            "mode": "train",
+        }
+    }
+    coeffs, _ = ladder_fit_step1(data, y_metric="rc_bpb", use_two_param=False)
+    return coeffs.tolist()
+
+def fn_step2_classic(bpb, paras): # 4-parameter sigmoid
+    return paras[0] / (1 + np.exp(-paras[2] * (bpb - paras[1]))) + paras[3]
+
+def fit_step2_classic(bpbs, metrics): # fn_step2_classic
+    data = {
+        "all": {
+            "xs": bpbs,
+            "ys": metrics,
+            "mode": "train",
+        }
+    }
+    coeffs, _ = ladder_fit_step2(
+        data,
+        task_name=None,
+        y_metric="rc_bpb",
+        use_log_sigmoid=False,
+        use_helper_points=False,
+    )
+    return coeffs.tolist()
+
+def fn_step1_irt(flop, paras): # theta = a * log(flops) + b
+    return paras[0] * np.log(flop) + paras[1]
+
+def fit_step1_irt(flops, thetas): # fn_step1_irt
+    x, y = np.asarray(flops, dtype=float), np.asarray(thetas, dtype=float)
+    log_x = np.log(x)
+    res = linregress(log_x, y)
+    return [float(res.slope), float(res.intercept)]
 
 
 
@@ -297,7 +346,7 @@ def _cat_core(ys, zs, device, estimator_fn, select_next_fn, discris=None, budget
         thetas.append(theta.clone().item())
         asked += 1
 
-    return thetas
+    return thetas, asked_z.detach().cpu().tolist()
 
 def _span_idxs(zs, ys, k, trim=0.10):
     lo, hi = torch.quantile(zs, torch.tensor([trim, 1 - trim], device=zs.device))

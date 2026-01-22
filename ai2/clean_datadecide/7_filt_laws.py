@@ -4,15 +4,21 @@ import pandas as pd
 import numpy as np
 import pickle
 import sys
-from ladder.fitting.step1_flops import fit_step1 as ladder_fit_step1
-from ladder.fitting.step2 import fit_step2 as ladder_fit_step2
-from scipy.stats import linregress
 from scipy.special import expit
 from tqdm import tqdm
 
 BASE_DIR = Path(__file__).resolve().parent / "data"
 sys.path.append(str(BASE_DIR.parent.parent.parent))
-from utils import MODEL2PARA, recursive_defaultdict
+from utils import (
+    MODEL2PARA,
+    recursive_defaultdict,
+    fn_step1_classic,
+    fit_step1_classic,
+    fn_step2_classic,
+    fit_step2_classic,
+    fn_step1_irt,
+    fit_step1_irt,
+)
 
 # function forms
 # - classic:
@@ -67,49 +73,6 @@ from utils import MODEL2PARA, recursive_defaultdict
 INPUT_PATH = BASE_DIR / "6_long.parquet"
 DIFF_INPUT_PATH = BASE_DIR / "6_difficulty.parquet"
 OUTPUT_PATH = BASE_DIR / "7_filt_laws.pkl"
-
-def fn_step1_classic(flop, paras):
-    return np.exp(paras[0]) / flop ** paras[1] + paras[2]
-
-def fit_step1_classic(flops, bpbs): # fn_step1_classic
-    data = {
-        "all": {
-            "fs": flops,
-            "xs": bpbs,
-            "mode": "train",
-        }
-    }
-    coeffs, _ = ladder_fit_step1(data, y_metric="rc_bpb", use_two_param=False)
-    return coeffs.tolist()
-
-def fn_step2_classic(bpb, paras): # 4-parameter sigmoid
-    return paras[0] / (1 + np.exp(-paras[2] * (bpb - paras[1]))) + paras[3]
-
-def fit_step2_classic(bpbs, metrics): # fn_step2_classic
-    data = {
-        "all": {
-            "xs": bpbs,
-            "ys": metrics,
-            "mode": "train",
-        }
-    }
-    coeffs, _ = ladder_fit_step2(
-        data,
-        task_name=None,
-        y_metric="rc_bpb",
-        use_log_sigmoid=False,
-        use_helper_points=False,
-    )
-    return coeffs.tolist()
-
-def fn_step1_irt(flop, paras): # theta = a * log(flops) + b
-    return paras[0] * np.log(flop) + paras[1]
-
-def fit_step1_irt(flops, thetas): # fn_step1_irt
-    x, y = np.asarray(flops, dtype=float), np.asarray(thetas, dtype=float)
-    log_x = np.log(x)
-    res = linregress(log_x, y)
-    return [float(res.slope), float(res.intercept)]
 
 if __name__ == "__main__":
     output_dict = recursive_defaultdict()
