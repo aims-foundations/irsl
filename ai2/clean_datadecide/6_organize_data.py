@@ -2,6 +2,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import sys
+import pickle
 rng = np.random.default_rng(0)
 
 BASE_DIR = Path(__file__).resolve().parent / "data"
@@ -13,7 +14,7 @@ INPUT_BINARY = BASE_DIR / "5_binary_matrix_cated.parquet"
 INPUT_PROB = BASE_DIR / "5_prob_matrix_cated.parquet"
 INPUT_BPB = BASE_DIR / "3_bpb_matrix.parquet"
 LONG_OUTPUT_PATH = BASE_DIR / "6_long.parquet"
-DIFFICULTY_OUTPUT_PATH = BASE_DIR / "6_difficulty.parquet"
+DIFFICULTY_OUTPUT_PATH = BASE_DIR / "6_difficulty.pkl"
 
 binary_df = pd.read_parquet(INPUT_BINARY)
 binary_test_df = binary_df[binary_df.index.get_level_values("model_split") == "test"].copy()
@@ -72,8 +73,15 @@ beta_ys = prob_test_df.to_numpy(dtype=np.float32)
 bpb_ys = bpb_test_df.to_numpy(dtype=np.float32)
 binary_zs = binary_test_df.columns.get_level_values("difficulty").to_numpy(dtype=np.float32)
 beta_zs = prob_test_df.columns.get_level_values("difficulty").to_numpy(dtype=np.float32)
-difficulty_df = pd.DataFrame({"binary_difficulty": binary_zs, "beta_difficulty": beta_zs})
-difficulty_df.to_parquet(DIFFICULTY_OUTPUT_PATH)
+difficulty_dict = {}
+for bench in unique_bench_names:
+    bench_mask = bench_names == bench
+    difficulty_dict[bench] = {
+        "binary_difficulty": binary_zs[bench_mask].tolist(),
+        "beta_difficulty": beta_zs[bench_mask].tolist(),
+    }
+with open(DIFFICULTY_OUTPUT_PATH, "wb") as f:
+    pickle.dump(difficulty_dict, f)
 
 for bench in unique_bench_names:
     bench_mask = bench_names == bench
