@@ -244,7 +244,7 @@ def _estimate_theta_beta_2pl(theta, asked_ys, asked_discris, asked_zs, device, e
     asked_ys = asked_ys.clamp(min=eps, max=1.0 - eps)
     return _estimate_theta_generic(
         theta, asked_ys, device,
-        logits_fn=lambda th: asked_discris * (th - asked_zs), 
+        logits_fn=lambda th: asked_discris * (th + asked_zs), 
         loss_kind="beta"
     )
 
@@ -261,7 +261,7 @@ def _estimate_theta_binary_2pl(theta, asked_ys, asked_discris, asked_zs, device)
     asked_zs      = torch.as_tensor(asked_zs,      device=device, dtype=torch.float)
     return _estimate_theta_generic(
         theta, asked_ys, device,
-        logits_fn=lambda th: asked_discris * (th - asked_zs),
+        logits_fn=lambda th: asked_discris * (th + asked_zs),
         loss_kind="binary"
     )
 
@@ -393,6 +393,69 @@ def beta_nll(y, mu, phi):
     b = (1.0 - mu) * phi
     return -((a - 1) * torch.log(y) + (b - 1) * torch.log1p(-y) - (torch.lgamma(a) + torch.lgamma(b) - torch.lgamma(a + b)))
 
+
+
+
+
+def calibrate_2pl(
+    resmat: torch.tensor,
+    device: str,
+    loss_kind: str = "beta",
+    max_epochs: int = 50,
+    max_iter_per_epoch: int = 100,
+    lr_theta: float = 0.1,
+    lr_items: float = 0.01,
+    phi: float = 10,
+    clamp_eps: float = 1e-6,
+):
+    resmat = resmat.to(device)
+    n_test_takers, n_items = resmat.shape
+    thetas = torch.randn(n_test_takers, device=device, requires_grad=True)
+    zs = torch.randn(n_items, device=device) * 0.1
+    zs.requires_grad_()
+    alphas = torch.ones(n_items, device=device) + torch.randn(n_items, device=device) * 0.1
+    alphas.requires_grad_()
+    phi_tensor = torch.tensor(phi, device=device)
+
+    if loss_kind == "beta":
+        def compute_loss(y, mu, mask):
+            y = y.clamp(clamp_eps, 1 - clamp_eps)
+            return beta_nll(y[mask], mu[mask], phi_tensor).mean()
+    elif loss_kind == "binary":
+        def compute_loss(y, mu, mask):
+            return -Bernoulli(probs=mu[mask]).log_prob(y[mask]).mean()
+    else:
+        raise ValueError(f"Unknown loss_kind: {loss_kind}")
+    
+    theta_optimizer = torch.optim.AdamW([thetas], lr=lr_theta)
+    item_optimizer = torch.optim.AdamW([alphas, zs], lr=lr_items)
+    
+    for epoch in (epoch_pbar := tqdm(range(max_epochs))):
+        # E-step: Update theta
+        for iteration in range(max_iter_per_epoch):
+            theta_optimizer.zero_grad()
+            mask = ~torch.isnan(resmat)
+            mu = torch.sigmoid(alphas[None, :] * (thetas[:, None] + zs[None, :]))
+            theta_loss = compute_loss(resmat, mu, mask)
+            theta_loss.backward()
+            theta_optimizer.step()
+        
+        # M-step: Update item parameters
+        for iteration in range(max_iter_per_epoch):
+            item_optimizer.zero_grad()
+            mask = ~torch.isnan(resmat)
+            mu = torch.sigmoid(alphas[None, :] * (thetas[:, None] + zs[None, :]))
+            item_loss = compute_loss(resmat, mu, mask)
+            item_loss.backward()
+            item_optimizer.step()
+        
+        epoch_pbar.set_postfix({"loss": float((theta_loss + item_loss).detach().cpu())})
+
+    return {
+        'theta': thetas.detach().cpu().numpy(),
+        'alpha': alphas.detach().cpu().numpy(),
+        'z': zs.detach().cpu().numpy(),
+    }
 
 
 
