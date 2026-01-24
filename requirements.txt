@@ -7,5 +7,7 @@ tueplots
 torch
 pyarrow
 huggingface_hub
+ai2-olmo
+datasets
 joblib
 git+https://github.com/allenai/OLMo-ladder@datados#egg=ladder[plotting]
