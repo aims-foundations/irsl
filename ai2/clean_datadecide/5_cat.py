@@ -81,7 +81,7 @@ for bench in tqdm(unique_bench_names):
         )
     fig_name = plots_dir / f"{fig_prefix}_{bench}_theta_convergence.png"
         
-    thetass = np.asarray([res[0] for res in results], dtype=np.float32)
+    thetass = np.asarray(results, dtype=np.float32)
     bench_thetas[bench] = thetass[:, -1]
 
     with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):

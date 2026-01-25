@@ -66,10 +66,10 @@ for dataset in tqdm(unique_datasets, desc="datasets"):
 
     if args.irt_model == "2pl":
         def _run_one(i):
-            return cat_beta_2pl(bench_probmat[i], bench_alphas, bench_zs, DEVICE, budget=ITEM_BUDGET)[0]
+            return cat_beta_2pl(bench_probmat[i], bench_alphas, bench_zs, DEVICE, budget=ITEM_BUDGET)
     else:
         def _run_one(i):
-            return cat_beta_1pl(bench_probmat[i], bench_zs, DEVICE, budget=ITEM_BUDGET)[0]
+            return cat_beta_1pl(bench_probmat[i], bench_zs, DEVICE, budget=ITEM_BUDGET)
 
     n_jobs = int((os.cpu_count()) * 0.8)
     thetass = Parallel(n_jobs=n_jobs)(

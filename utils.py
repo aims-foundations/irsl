@@ -346,7 +346,7 @@ def _cat_core(ys, zs, device, estimator_fn, select_next_fn, discris=None, budget
         thetas.append(theta.clone().item())
         asked += 1
 
-    return thetas, asked_z.detach().cpu().tolist()
+    return thetas
 
 def _span_idxs(zs, ys, k, trim=0.10):
     lo, hi = torch.quantile(zs, torch.tensor([trim, 1 - trim], device=zs.device))
