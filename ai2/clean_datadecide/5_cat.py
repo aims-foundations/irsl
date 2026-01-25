@@ -16,7 +16,7 @@ import pickle
 
 BASE_DIR = Path(__file__).resolve().parent / "data"
 sys.path.append(str(BASE_DIR.parent.parent.parent))
-from utils import cat_beta_1pl, cat_binary_1pl
+from utils import cat_beta_1pl, cat_binary_1pl, cat_beta_2pl, cat_binary_2pl
 
 N_MAX_PLOT = 50
 DRY_RUN_N_ROWS = 64
@@ -24,27 +24,25 @@ DRY_RUN_N_ROWS = 64
 parser = argparse.ArgumentParser()
 parser.add_argument("--dry-run", action="store_true")
 parser.add_argument("--loss-kind", type=str, default="beta", choices=["beta", "binary"])
+parser.add_argument("--irt-model", type=str, default="1pl", choices=["1pl", "2pl"])
 args = parser.parse_args()
 
 n_cpus = int((os.cpu_count()) * 0.8)
 print(f"Using {n_cpus} CPUs for parallel processing.")
 
-input_path = (
-    BASE_DIR / "4_prob_matrix_calibrated.parquet"
-    if args.loss_kind == "beta"
-    else BASE_DIR / "4_binary_matrix_calibrated.parquet"
-)
-matrix_output_path = (
-    BASE_DIR / "5_prob_matrix_cated.parquet"
-    if args.loss_kind == "beta"
-    else BASE_DIR / "5_binary_matrix_cated.parquet"
-)
-asked_zs_output_path = (
-    BASE_DIR / "5_prob_asked_zs.pkl"
-    if args.loss_kind == "beta"
-    else BASE_DIR / "5_binary_asked_zs.pkl"
-)
-plots_dir = Path(__file__).resolve().parent / "results" / "5_cat"
+irt_suffix = "_2pl" if args.irt_model == "2pl" else ""
+plots_dir = Path(__file__).resolve().parent / "results" / f"5_cat{irt_suffix}"
+
+if args.loss_kind == "beta":
+    input_path = BASE_DIR / f"4_prob_matrix_calibrated{irt_suffix}.parquet"
+    matrix_output_path = BASE_DIR / f"5_prob_matrix_cated{irt_suffix}.parquet"
+    cat_fn = cat_beta_2pl if args.irt_model == "2pl" else cat_beta_1pl
+    fig_prefix = "beta"
+else:
+    input_path = BASE_DIR / f"4_binary_matrix_calibrated{irt_suffix}.parquet"
+    matrix_output_path = BASE_DIR / f"5_binary_matrix_cated{irt_suffix}.parquet"
+    cat_fn = cat_binary_2pl if args.irt_model == "2pl" else cat_binary_1pl
+    fig_prefix = "binary"
 os.makedirs(plots_dir, exist_ok=True)
 
 resmat_df = pd.read_parquet(input_path)
@@ -61,31 +59,30 @@ bench_names = test_df.columns.get_level_values("bench_name").map(
 )
 unique_bench_names = sorted(bench_names.unique())
 zs = test_df.columns.get_level_values("difficulty").to_numpy(dtype=np.float32)
+if args.irt_model == "2pl":
+    alphas = test_df.columns.get_level_values("discrimination").to_numpy(dtype=np.float32)
 
 bench_thetas = {}
-bench_asked_zs = {}
 for bench in tqdm(unique_bench_names):
     bench_mask = bench_names == bench
     bench_test_ys = torch.tensor(test_ys[:, bench_mask], dtype=torch.float32)
     bench_zs = torch.tensor(zs[bench_mask], dtype=torch.float32)
     
-    if args.loss_kind == "binary":
+    if args.irt_model == "2pl":
+        bench_alphas = torch.tensor(alphas[bench_mask], dtype=torch.float32)
         results = Parallel(n_jobs=n_cpus)(
-            delayed(cat_binary_1pl)(bench_test_ys[i], bench_zs, "cpu")
+            delayed(cat_fn)(bench_test_ys[i], bench_alphas, bench_zs, "cpu")
             for i in range(n_models)
         )
-        fig_name = plots_dir / f"binary_{bench}_theta_convergence.png"
     else:
         results = Parallel(n_jobs=n_cpus)(
-            delayed(cat_beta_1pl)(bench_test_ys[i], bench_zs, "cpu")
+            delayed(cat_fn)(bench_test_ys[i], bench_zs, "cpu")
             for i in range(n_models)
         )
-        fig_name = plots_dir / f"beta_{bench}_theta_convergence.png"
+    fig_name = plots_dir / f"{fig_prefix}_{bench}_theta_convergence.png"
         
     thetass = np.asarray([res[0] for res in results], dtype=np.float32)
-    asked_zs = [res[1] for res in results]
     bench_thetas[bench] = thetass[:, -1]
-    bench_asked_zs[bench] = asked_zs
 
     with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
         fig, axes = plt.subplots(
@@ -127,15 +124,5 @@ cols = combined.columns
 print("\nColumn index names:", cols.names)
 print("Column index sample (first 5):", list(islice(cols, 5)))
 
-asked_zs_df = pd.DataFrame(
-    {f"asked_difficulty_{b}": bench_asked_zs[b] for b in unique_bench_names},
-    index=test_df_reset.index,
-)# list of float
-asked_zs_dict = {}
-for idx, row in asked_zs_df.iterrows():
-    asked_zs_dict[idx] = row
-
 if not args.dry_run:
     combined.to_parquet(matrix_output_path)
-    with open(asked_zs_output_path, "wb") as f:
-        pickle.dump(asked_zs_dict, f)

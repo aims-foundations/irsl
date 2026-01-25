@@ -303,7 +303,7 @@ def _select_next_2pl(theta, rem_discri, rem_z):
     return torch.argmax(fi).item()
 
 def _compute_fisher_info_2pl(theta, rem_discri, rem_z):
-    p = torch.sigmoid(rem_discri * (theta - rem_z))
+    p = torch.sigmoid(rem_discri * (theta + rem_z))
     return p * (1 - p)
 
 def _cat_core(ys, zs, device, estimator_fn, select_next_fn, discris=None, budget=50, init_frac=0.2):

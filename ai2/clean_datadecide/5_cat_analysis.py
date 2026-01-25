@@ -14,18 +14,20 @@ warnings.filterwarnings("ignore")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--loss-kind", type=str, default="beta", choices=["beta", "binary"])
+parser.add_argument("--irt-model", type=str, default="1pl", choices=["1pl", "2pl"])
 parser.add_argument("--sample-questions", type=int, default=5)
 args = parser.parse_args()
 
 BASE_DIR = Path(__file__).resolve().parent
+irt_suffix = "_2pl" if args.irt_model == "2pl" else ""
 input_path = (
-    BASE_DIR / "data" / "5_prob_matrix_cated.parquet"
+    BASE_DIR / "data" / f"5_prob_matrix_cated{irt_suffix}.parquet"
     if args.loss_kind == "beta"
-    else BASE_DIR / "data" / "5_binary_matrix_cated.parquet"
+    else BASE_DIR / "data" / f"5_binary_matrix_cated{irt_suffix}.parquet"
 )
-scatter_root = BASE_DIR / "results" / "5_cat_analysis" / "corr_scatter"
+scatter_root = BASE_DIR / "results" / f"5_cat_analysis{irt_suffix}" / "corr_scatter"
 scatter_root.mkdir(parents=True, exist_ok=True)
-curve_root = BASE_DIR / "results" / "5_cat_analysis" / "irt_curve"
+curve_root = BASE_DIR / "results" / f"5_cat_analysis{irt_suffix}" / "irt_curve"
 curve_root.mkdir(parents=True, exist_ok=True)
 
 df = pd.read_parquet(input_path)
@@ -36,6 +38,8 @@ bench_names = test_df.columns.get_level_values("bench_name").map(
 )
 unique_bench_names = sorted(bench_names.unique())
 zs = test_df.columns.get_level_values("difficulty").to_numpy(dtype=np.float32)
+if args.irt_model == "2pl":
+    alphas = test_df.columns.get_level_values("discrimination").to_numpy(dtype=np.float32)
 
 for bench in tqdm(unique_bench_names, desc="benches"):
     bench_thetas = test_df.index.get_level_values(f"ability_{bench}").to_numpy(dtype=np.float32)
@@ -43,10 +47,15 @@ for bench in tqdm(unique_bench_names, desc="benches"):
     bench_mask = bench_names == bench
     bench_ys = ys[:, bench_mask]
     bench_zs = zs[bench_mask]
+    if args.irt_model == "2pl":
+        bench_alphas = alphas[bench_mask]
 
     # Scatter plot + correlation
     if args.loss_kind == "beta":
-        p_pred_full = expit(bench_thetas[:, None] + bench_zs[None, :])
+        if args.irt_model == "2pl":
+            p_pred_full = expit(bench_alphas[None, :] * (bench_thetas[:, None] + bench_zs[None, :]))
+        else:
+            p_pred_full = expit(bench_thetas[:, None] + bench_zs[None, :])
         rho, _ = spearmanr(p_pred_full.reshape(-1), bench_ys.reshape(-1))
         out_path = scatter_root / f"prob_corr_{bench}.png"
         with plt.rc_context(bundles.icml2024(usetex=True, family='serif')):
@@ -90,8 +99,13 @@ for bench in tqdm(unique_bench_names, desc="benches"):
 
     for idx in sample_idxs:
         z_j = bench_zs[idx]
+        if args.irt_model == "2pl":
+            alpha_j = bench_alphas[idx]
         y_j = bench_ys[:, idx]
-        curve = expit(theta_arange + z_j)
+        if args.irt_model == "2pl":
+            curve = expit(alpha_j * (theta_arange + z_j))
+        else:
+            curve = expit(theta_arange + z_j)
 
         with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
             plt.figure(figsize=(6, 4))
