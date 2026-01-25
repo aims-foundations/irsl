@@ -17,6 +17,7 @@ from scipy.special import expit
 
 DATA_DIR = BASE_DIR / "data"
 RESULTS_DIR = BASE_DIR / "results" / "5_generalization_law_curve"
+PROB_THRESHOLD = 0.005
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--input-hf-repo", type=str, default="irsl_testtime_resmat2", choices=["irsl_testtime_resmat1", "irsl_testtime_resmat2"])
@@ -44,12 +45,19 @@ for dataset in tqdm(sorted(est_payload.keys()), desc="datasets"):
         easy_model_tensor = easy_tensor[model_idx]
         hard_model_tensor = hard_tensor[model_idx]
 
+        easy_mask = np.nanmean(easy_model_tensor, axis=-1) >= PROB_THRESHOLD
+        hard_mask = np.nanmean(hard_model_tensor, axis=-1) >= PROB_THRESHOLD
+        easy_model_tensor = easy_model_tensor[easy_mask]
+        hard_model_tensor = hard_model_tensor[hard_mask]
+        easy_zs_masked = easy_zs[easy_mask]
+        hard_zs_masked = hard_zs[hard_mask]
+
         pass_easy_gt = compute_pass_datk_gts(easy_model_tensor)
         pass_hard_gt = compute_pass_datk_gts(hard_model_tensor)
 
         theta = float(theta_from_easy[model_idx])
-        easy_probs = expit(theta + easy_zs)
-        hard_probs = expit(theta + hard_zs)
+        easy_probs = expit(theta + easy_zs_masked)
+        hard_probs = expit(theta + hard_zs_masked)
         pass_easy_est = compute_pass_datk_irt(easy_probs, n_samples)
         pass_hard_est = compute_pass_datk_irt(hard_probs, n_samples)
 

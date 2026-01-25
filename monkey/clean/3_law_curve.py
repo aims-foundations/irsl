@@ -20,6 +20,7 @@ warnings.filterwarnings("ignore")
 
 DATA_DIR = BASE_DIR / "data"
 RESULTS_DIR = BASE_DIR / "results" / "3_law_curve"
+PROB_THRESHOLD = 0.005
 
 def plot_law_curve(output_dir, tag, model, bench, sample_arange, pass_datk_gts, pass_datk_subset_subsample_passat1, pass_datk_irts_beta, mae_irt_beta, mae_sub_passat1):
     with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
@@ -113,7 +114,7 @@ def process_config(args):
     )
 
     # after filter
-    mask = (passat1s_fullset >= 0.01)
+    mask = (passat1s_fullset >= PROB_THRESHOLD)
     model_tensor = model_tensor[mask]
     passat1s_subset_subsample = np.nanmean(model_tensor[:item_budget, :sample_budget], axis=-1)
     irt_probs_beta = irt_probs_beta[mask]
