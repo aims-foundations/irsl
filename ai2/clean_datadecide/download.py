@@ -12,5 +12,5 @@ snapshot_download(
     local_dir="results",
 )
 
-print(f"Downloaded `yuhengtu/irsl_datadecide` into `./data`")
+print(f"Downloaded `yuhengtu/irsl_datadecide_data` into `./data`")
 print(f"Downloaded `yuhengtu/irsl_datadecide_results` into `./results`")

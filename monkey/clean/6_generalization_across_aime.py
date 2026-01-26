@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from tueplots import bundles
 from scipy.special import expit
+import pickle
 import sys
 bundles.icml2024()
 warnings.filterwarnings("ignore")
@@ -20,6 +21,7 @@ PROB_THRESHOLD = 0.005
 DATA_DIR = BASE_DIR / "data"
 RESULTS_DIR = BASE_DIR / "results" / "6_generalization_across_aime"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+HEATMAP_DATA_PATH = DATA_DIR / "5_hard_mae_heatmap.pkl"
 
 input_path = DATA_DIR / "1_calibreated_irsl_testtime_resmat2.pt"
 payload = torch.load(input_path, map_location="cpu", weights_only=False)
@@ -42,6 +44,7 @@ thetas = calibrate_1pl_theta(torch.tensor(probmat_24), DEVICE, zs_24)
 
 n_samples = data_tensor.shape[-1]
 sample_arange = np.arange(1, n_samples + 1)
+aime_mae = {}
 for model_idx, model_name in enumerate(test_models):
     model_tensor_24 = bench_tensor_24[model_idx]
     model_tensor_25 = bench_tensor_25[model_idx]
@@ -61,6 +64,7 @@ for model_idx, model_name in enumerate(test_models):
     probs_25 = expit(theta + zs_25_masked)
     pass_24_est = compute_pass_datk_irt(probs_24, n_samples)
     pass_25_est = compute_pass_datk_irt(probs_25, n_samples)
+    aime_mae[model_name] = float(np.mean(np.abs(pass_25_est - pass_25_gt)))
 
     with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
         fig, ax = plt.subplots(figsize=(6, 6))
@@ -68,11 +72,52 @@ for model_idx, model_name in enumerate(test_models):
         ax.loglog(sample_arange, -np.log(pass_24_est), label="AIME24 Est", color="blue", linestyle="--")
         ax.loglog(sample_arange, -np.log(pass_25_gt), label="AIME25 GT", color="red")
         ax.loglog(sample_arange, -np.log(pass_25_est), label="AIME25 Est", color="red", linestyle="--")
-        ax.set_title(model_name, fontsize=16)
-        ax.set_xlabel("Number of Samples", fontsize=16)
+        mae_str = f"{np.mean(np.abs(pass_25_est - pass_25_gt)):.1e}".replace("e-0", "e-").replace("e+0", "e+")
+        ax.set_title(f"{model_name}, aime_24_to_25\nMAE = Abs(AIME25 GT - AIME25 Est) = {mae_str}", fontsize=16)
+        ax.set_xlabel(r"Number of Samples $k$", fontsize=16)
         ax.set_ylabel(r"$-\log(\mathrm{Pass@k})$", fontsize=16)
         ax.legend(fontsize=12)
         ax.tick_params(axis="both", labelsize=12)
         fig.tight_layout()
         fig.savefig(RESULTS_DIR / f"generalization_across_aime_{model_name}.png", dpi=300, bbox_inches="tight")
         plt.close(fig)
+
+# heatmap
+with open(HEATMAP_DATA_PATH, "rb") as f:
+    heat_data = pickle.load(f)
+
+bench_names = heat_data["bench_names"]
+model_names = heat_data["model_names"]
+heat_vals = np.array(heat_data["heat_vals"], dtype=np.float32)
+
+aime_row = np.full((1, len(model_names)), np.nan, dtype=np.float32)
+for j, m in enumerate(model_names):
+    aime_row[0, j] = aime_mae[m]
+
+heat_vals = np.vstack([heat_vals, aime_row])
+bench_names = bench_names + ["aime_24_to_25"]
+
+abs_max = np.nanmax(np.abs(heat_vals))
+vmin, vmax = 0.0, abs_max
+fig_w = max(4.6, 0.4 * len(model_names) + 0.8)
+fig_h = max(3.0, 0.22 * len(bench_names) + 0.6)
+with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+    im = ax.imshow(heat_vals, aspect="auto", cmap="Reds", vmin=vmin, vmax=vmax)
+    ax.set_xticks(np.arange(len(model_names)))
+    ax.set_xticklabels(model_names, rotation=45, ha="right", fontsize=10)
+    ax.set_yticks(np.arange(len(bench_names)))
+    ax.set_yticklabels(bench_names, fontsize=10)
+    for i in range(heat_vals.shape[0]):
+        for j in range(heat_vals.shape[1]):
+            label = f"{heat_vals[i, j]:.1e}".replace("e-0", "e-").replace("e+0", "e+")
+            ax.text(j, i, label, ha="center", va="center", fontsize=10)
+    ax.axhline(y=len(bench_names) - 1.5, color="black", linewidth=2.0)
+    cbar = fig.colorbar(im, ax=ax, shrink=0.8)
+    cbar.set_label("MAE = Abs(Hard GT - Hard Est)", fontsize=10)
+    cbar.ax.tick_params(labelsize=10)
+    ax.set_xlabel("Model", fontsize=10)
+    ax.set_ylabel("Benchmark", fontsize=10)
+    heatmap_path = RESULTS_DIR / "hard_mae_heatmap_with_aime.png"
+    fig.savefig(heatmap_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)

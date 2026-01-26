@@ -65,8 +65,8 @@ for pt_path in tqdm(pt_files, desc="cat analysis"):
             ax_scatter.plot([0, 1], [0, 1], linestyle="--", linewidth=1, color="black")
             ax_scatter.set_xlim(0, 1)
             ax_scatter.set_ylim(0, 1)
-            ax_scatter.set_xlabel("IRT Probability", fontsize=18)
-            ax_scatter.set_ylabel("Empirical Probability", fontsize=18)
+            ax_scatter.set_xlabel(r"Beta-IRT Predicted $\mathrm{Pass@1}$", fontsize=18)
+            ax_scatter.set_ylabel(r"Empirical $\mathrm{Pass@1}$", fontsize=18)
             ax_scatter.tick_params(axis="both", labelsize=14)
 
             ax_left.hist(bench_ys.reshape(-1), bins=30, orientation="horizontal")
@@ -84,7 +84,7 @@ for pt_path in tqdm(pt_files, desc="cat analysis"):
             for spine in ("top", "right", "bottom", "left"):
                 ax_bottom.spines[spine].set_visible(False)
 
-            fig.suptitle(rf"{dataset} ($\rho$ = {rho:.2f})", fontsize=16)
+            fig.suptitle(rf"{dataset} ($\rho$ = {rho:.2f})", fontsize=18)
             plt.subplots_adjust(wspace=0.05, hspace=0.05)
             fig.savefig(out_path, dpi=300, bbox_inches="tight")
             plt.close(fig)
@@ -107,13 +107,14 @@ for pt_path in tqdm(pt_files, desc="cat analysis"):
 
             with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
                 plt.figure(figsize=(6, 4))
-                plt.scatter(test_thetas, responses, s=10, label="Responses")
-                plt.plot(theta_range, curve, color="red", label="IRT Prob")
+                plt.scatter(test_thetas, responses, s=10, label=r"Empirical $\mathrm{Pass@1}$")
+                plt.plot(theta_range, curve, color="red", label="Beta-IRT Curve")
                 plt.xlabel(r"$\theta$", fontsize=14)
-                plt.ylabel("IRT Prob / Responses", fontsize=14)
+                plt.ylabel(r"$\mathrm{Pass@1}$", fontsize=14)
                 plt.ylim(0, 1)
+                plt.tick_params(axis="both", labelsize=12)
                 plt.legend(fontsize=12)
-                plt.title(f"{dataset}, {item_idx}", fontsize=14)
+                plt.title(f"{dataset}, Question {item_idx}", fontsize=14)
                 plt.tight_layout()
                 plt.savefig(out_path, dpi=300, bbox_inches="tight")
                 plt.close()

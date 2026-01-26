@@ -139,7 +139,7 @@ if __name__ == "__main__":
                 alpha=0.5,
                 color="tab:blue",
                 linestyle="--",
-                label="IRT Binary 1PL",
+                label="Binary-IRT 1PL",
             )
             ax.plot(
                 plot_df["flop_ratio"],
@@ -149,7 +149,7 @@ if __name__ == "__main__":
                 alpha=0.5,
                 color="tab:blue",
                 linestyle="-",
-                label="IRT Beta 1PL",
+                label="Beta-IRT 1PL",
             )
             ax.plot(
                 plot_df["flop_ratio"],
@@ -159,7 +159,7 @@ if __name__ == "__main__":
                 alpha=0.5,
                 color="tab:red",
                 linestyle="--",
-                label="IRT Binary 2PL",
+                label="Binary-IRT 2PL",
             )
             ax.plot(
                 plot_df["flop_ratio"],
@@ -169,10 +169,10 @@ if __name__ == "__main__":
                 alpha=0.5,
                 color="tab:red",
                 linestyle="-",
-                label="IRT Beta 2PL",
+                label="Beta-IRT 2PL",
             )
             ax.set_xlabel(r"Max $C$ for Predicting / Target $C$", fontsize=16)
-            ax.set_ylabel("Decision accuracy", fontsize=16)
+            ax.set_ylabel("Decision Accuracy", fontsize=16)
             ax.set_title(f"{bench}", fontsize=18)
             ax.set_xscale("log")
             ax.set_ylim(0.0, 1.0)
@@ -205,8 +205,8 @@ if __name__ == "__main__":
                     ax.scatter(flops, bpbs, color="tab:blue", alpha=0.7)
                     ax.plot(x_curve, y_curve, color="tab:blue")
                     ax.set_xlabel("FLOP", fontsize=16)
-                    ax.set_ylabel("Correct BPB", fontsize=16)
-                    ax.set_title(f"Classic Step1: {bench}, {mix}, {max_size}", fontsize=18)
+                    ax.set_ylabel("Averge Bits-per-Bytes of Correct Choice", fontsize=16)
+                    ax.set_title(f"Classic Step1: {bench}, {mix}, Max Model Size={max_size}", fontsize=18)
                     ax.set_xscale("log")
                     ax.tick_params(axis="both", labelsize=14)
                     fig.tight_layout()
@@ -230,9 +230,9 @@ if __name__ == "__main__":
                     ax.scatter(bpbs, probs, color="tab:red", alpha=0.7, label="Prob dps")
                     ax.plot(x_curve, y_acc_curve, color="tab:blue", label="Acc Curve")
                     ax.plot(x_curve, y_prob_curve, color="tab:red", label="Prob Curve")
-                    ax.set_xlabel("Correct BPB", fontsize=16)
-                    ax.set_ylabel("Acc / Prob", fontsize=16)
-                    ax.set_title(f"Classic Step2: {bench}, {mix}, {max_size}", fontsize=18)
+                    ax.set_xlabel("Averge Bits-per-Bytes of Correct Choice", fontsize=16)
+                    ax.set_ylabel("Accuracy / Averge Probability of Correct Choice", fontsize=16)
+                    ax.set_title(f"Classic Step2: {bench}, {mix}, Max Model Size={max_size}", fontsize=18)
                     ax.tick_params(axis="both", labelsize=14)
                     ax.legend(fontsize=12)
                     fig.tight_layout()
@@ -268,7 +268,7 @@ if __name__ == "__main__":
                     ax.plot(x_curve, y_beta_2pl_curve, color="tab:purple", label="Beta 2PL Curve")
                     ax.set_xlabel("FLOP", fontsize=16)
                     ax.set_ylabel(r"$\theta$", fontsize=16)
-                    ax.set_title(f"IRT Step1: {bench}, {mix}, {max_size}", fontsize=18)
+                    ax.set_title(f"IRT Step1: {bench}, {mix}, Max Model Size={max_size}", fontsize=18)
                     ax.set_xscale("log")
                     ax.tick_params(axis="both", labelsize=14)
                     ax.legend(fontsize=12)

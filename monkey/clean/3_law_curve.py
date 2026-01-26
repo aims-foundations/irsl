@@ -22,7 +22,7 @@ DATA_DIR = BASE_DIR / "data"
 RESULTS_DIR = BASE_DIR / "results" / "3_law_curve"
 PROB_THRESHOLD = 0.005
 
-def plot_law_curve(output_dir, tag, model, bench, sample_arange, pass_datk_gts, pass_datk_subset_subsample_passat1, pass_datk_irts_beta, mae_irt_beta, mae_sub_passat1):
+def plot_law_curve(output_dir, tag, filter_status, model, bench, sample_arange, pass_datk_gts, pass_datk_subset_subsample_passat1, pass_datk_irts_beta, mae_irt_beta, mae_sub_passat1):
     with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
         fig, axes = plt.subplots(1, 2, figsize=(12, 6))
         # ax_left, ax_right = axes
@@ -46,12 +46,17 @@ def plot_law_curve(output_dir, tag, model, bench, sample_arange, pass_datk_gts, 
         ax_right.loglog(sample_arange, -np.log(pass_datk_gts), label="Ground Truth", linewidth=2, color="black")
         ax_right.loglog(sample_arange, -np.log(pass_datk_subset_subsample_passat1), label="Classic", linestyle="--", color="blue")
         ax_right.loglog(sample_arange, -np.log(pass_datk_irts_beta), label="Beta-IRT", linewidth=2, linestyle="--", color="red")
-        ax_right.set_xlabel("Number of Samples", fontsize=16)
+        ax_right.set_xlabel(r"Number of Samples $k$", fontsize=16)
         ax_right.set_ylabel(r"$-\log(\mathrm{Pass@k})$", fontsize=16)
         ax_right.legend(fontsize=14)
         ax_right.tick_params(axis="both", labelsize=14)
+        beta_str = f"{mae_irt_beta:.1e}".replace("e-0", "e-").replace("e+0", "e+")
+        classic_str = f"{mae_sub_passat1:.1e}".replace("e-0", "e-").replace("e+0", "e+")
+        diff_str = f"{(mae_sub_passat1 - mae_irt_beta):.1e}".replace("e-0", "e-").replace("e+0", "e+")
         fig.suptitle(
-            rf"{model}, {bench}, Beta-IRT MAE: {mae_irt_beta:.2e}, Classic MAE={mae_sub_passat1:.2e})",
+            f"{model}, {bench}, {filter_status}\n"
+            f"Classic MAE={classic_str}, Beta-IRT MAE={beta_str}\n"
+            f"Clssic MAE - Beta-IRT MAE= {diff_str}",
             fontsize=16,
         )
         fig.tight_layout()
@@ -103,6 +108,7 @@ def process_config(args):
     plot_law_curve(
         output_dir=output_dir,
         tag="before_filter",
+        filter_status="Before Filter",
         model=model,
         bench=bench,
         sample_arange=sample_arange,
@@ -127,6 +133,7 @@ def process_config(args):
     plot_law_curve(
         output_dir=output_dir,
         tag="after_filter",
+        filter_status="After Filter",
         model=model,
         bench=bench,
         sample_arange=sample_arange,
@@ -180,23 +187,25 @@ if __name__ == "__main__":
         vals = np.array([[diffs[b][m] for m in test_models] for b in unique_benches], dtype=np.float32)
         abs_max = np.max(np.abs(vals))
         vmin, vmax = -abs_max, abs_max
-        fig_w = max(7, 0.5 * len(test_models) + 2)
-        fig_h = max(6, 0.4 * len(unique_benches) + 2)
+        fig_w = max(4.6, 0.4 * len(test_models) + 0.8)
+        fig_h = max(3.0, 0.22 * len(unique_benches) + 0.6)
         with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
             fig, ax = plt.subplots(figsize=(fig_w, fig_h))
             im = ax.imshow(vals, aspect="auto", cmap="bwr", vmin=vmin, vmax=vmax)
             ax.set_xticks(np.arange(len(test_models)))
-            ax.set_xticklabels(test_models, rotation=45, ha="right", fontsize=12)
+            ax.set_xticklabels(test_models, rotation=45, ha="right", fontsize=10)
             ax.set_yticks(np.arange(len(unique_benches)))
-            ax.set_yticklabels(unique_benches, fontsize=12)
+            ax.set_yticklabels(unique_benches, fontsize=10)
             for i in range(vals.shape[0]):
                 for j in range(vals.shape[1]):
-                    ax.text(j, i, f"{vals[i, j]:.2e}", ha="center", va="center", fontsize=12)
+                    label = f"{vals[i, j]:.1e}".replace("e-0", "e-").replace("e+0", "e+")
+                    ax.text(j, i, label, ha="center", va="center", fontsize=10)
             cbar = fig.colorbar(im, ax=ax, shrink=0.8)
-            cbar.set_label("MAE Clssic - MAE Beta-IRT", fontsize=14)
-            ax.set_xlabel("Model", fontsize=14)
-            ax.set_ylabel("Dataset", fontsize=14)
-            ax.set_title("MAE Difference After Filter — Test Models", fontsize=16)
+            cbar.set_label("Clssic MAE - Beta-IRT MAE", fontsize=10)
+            cbar.ax.tick_params(labelsize=10)
+            ax.set_xlabel("Model", fontsize=10)
+            ax.set_ylabel("Dataset", fontsize=10)
+            ax.set_title("MAE Difference After Filter", fontsize=10)
             heatmap_path = RESULTS_DIR / stem / f"{stem}_heatmap.png"
             plt.savefig(heatmap_path, dpi=300, bbox_inches="tight")
             plt.close(fig)

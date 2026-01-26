@@ -15,8 +15,9 @@ warnings.filterwarnings("ignore")
 parser = argparse.ArgumentParser()
 parser.add_argument("--loss-kind", type=str, default="beta", choices=["beta", "binary"])
 parser.add_argument("--irt-model", type=str, default="1pl", choices=["1pl", "2pl"])
-parser.add_argument("--sample-questions", type=int, default=5)
 args = parser.parse_args()
+
+SAMPLE_QUESTIONS = 5
 
 BASE_DIR = Path(__file__).resolve().parent
 irt_suffix = "_2pl" if args.irt_model == "2pl" else ""
@@ -69,8 +70,8 @@ for bench in tqdm(unique_bench_names, desc="benches"):
             ax_scatter.plot([0, 1], [0, 1], linestyle="--", linewidth=1, color="black")
             ax_scatter.set_xlim(0, 1)
             ax_scatter.set_ylim(0, 1)
-            ax_scatter.set_xlabel("IRT Probability", fontsize=18)
-            ax_scatter.set_ylabel("Empirical Probability", fontsize=18)
+            ax_scatter.set_xlabel("Beta-IRT Predicted Prob of Correct Choice", fontsize=18)
+            ax_scatter.set_ylabel("Empirical Prob of Correct Choice", fontsize=18)
             ax_scatter.tick_params(axis="both", labelsize=14)
 
             ax_left.hist(bench_ys.reshape(-1), bins=30, orientation="horizontal")
@@ -88,13 +89,13 @@ for bench in tqdm(unique_bench_names, desc="benches"):
             for spine in ("top", "right", "bottom", "left"):
                 ax_bottom.spines[spine].set_visible(False)
 
-            fig.suptitle(rf"{bench} ($\rho$ = {rho:.2f})", fontsize=16)
+            fig.suptitle(rf"{bench} ($\rho$ = {rho:.2f})", fontsize=18)
             plt.subplots_adjust(wspace=0.05, hspace=0.05)
             fig.savefig(out_path, dpi=300, bbox_inches="tight")
             plt.close(fig)
 
     # IRT curves per question (sampled)
-    sample_idxs = np.random.default_rng(0).choice(bench_ys.shape[1], size=args.sample_questions, replace=False)
+    sample_idxs = np.random.default_rng(0).choice(bench_ys.shape[1], size=SAMPLE_QUESTIONS, replace=False)
     theta_arange = np.linspace(bench_thetas.min() - 1, bench_thetas.max() + 1, 200)
 
     for idx in sample_idxs:
@@ -109,13 +110,13 @@ for bench in tqdm(unique_bench_names, desc="benches"):
 
         with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
             plt.figure(figsize=(6, 4))
-            plt.scatter(bench_thetas, y_j, s=10, label="Responses")
-            plt.plot(theta_arange, curve, color="red", label="IRT Prob")
+            plt.scatter(bench_thetas, y_j, s=10, label="Empirical Prob of Correct Choice")
+            plt.plot(theta_arange, curve, color="red", label="Beta-IRT Curve")
             plt.xlabel(r"$\theta$", fontsize=14)
-            plt.ylabel("IRT Prob / Responses", fontsize=14)
+            plt.ylabel("Prob of Correct Choice", fontsize=14)
             plt.ylim(0, 1)
-            plt.legend(fontsize=12)
-            plt.title(f"{bench}, {idx}", fontsize=14)
+            plt.legend(fontsize=10)
+            plt.title(f"{bench}, Question {idx}", fontsize=14)
             plt.tight_layout()
             out_path = curve_root / f"{args.loss_kind}_{bench}_{idx}.png"
             plt.savefig(out_path, dpi=300, bbox_inches="tight")

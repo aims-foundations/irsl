@@ -15,8 +15,9 @@ BASE_DIR = Path(__file__).resolve().parent / "data"
 parser = argparse.ArgumentParser()
 parser.add_argument("--loss-kind", type=str, default="beta", choices=["beta", "binary"])
 parser.add_argument("--irt-model", type=str, default="1pl", choices=["1pl", "2pl"])
-parser.add_argument("--sample-questions", type=int, default=5)
 args = parser.parse_args()
+
+SAMPLE_QUESTIONS = 5
 
 if args.irt_model == "2pl":
     input_path = (
@@ -54,7 +55,7 @@ for bench in unique_bench_names:
     if args.irt_model == "2pl":
         bench_alphas = alphas[bench_mask]
 
-    sample_idxs = rng.choice(bench_ys.shape[1], size=args.sample_questions, replace=False)
+    sample_idxs = rng.choice(bench_ys.shape[1], size=SAMPLE_QUESTIONS, replace=False)
     theta_arange = np.linspace(bench_thetas.min() - 1, bench_thetas.max() + 1, 200)
 
     for idx in sample_idxs:
