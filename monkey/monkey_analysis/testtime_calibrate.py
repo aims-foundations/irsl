@@ -17,8 +17,8 @@ if __name__ == "__main__":
 
     N_MODELS_FOR_TEST = 4
 
-    # FILE_NAME = "irsl_testtime_resmat1"
-    FILE_NAME = "irsl_testtime_resmat2"
+    FILE_NAME = "irsl_testtime_resmat1"
+    # FILE_NAME = "irsl_testtime_resmat2"
     cache_dir = snapshot_download(repo_id=f"stair-lab/{FILE_NAME}", repo_type="dataset")
 
     # Note: weights_only=False is required for PyTorch 2.6+
