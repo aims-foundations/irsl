@@ -209,3 +209,24 @@ if __name__ == "__main__":
             heatmap_path = RESULTS_DIR / stem / f"{stem}_heatmap.png"
             plt.savefig(heatmap_path, dpi=300, bbox_inches="tight")
             plt.close(fig)
+
+        # density distribution of Traditional MAE - IRSL MAE
+        mae_vals = []
+        for bench in unique_benches:
+            for model in test_models:
+                mae_beta = results_dict[bench][model]["mae_irt_beta_after_filter"]
+                mae_pass1 = results_dict[bench][model]["mae_sub_passat1_after_filter"]
+                mae_vals.append(mae_pass1 - mae_beta)
+        mae_vals = np.array(mae_vals, dtype=np.float32)
+        mae_vals = mae_vals[np.isfinite(mae_vals)]
+        with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
+            fig, ax = plt.subplots(figsize=(6, 4))
+            ax.hist(mae_vals, bins=30, density=True, alpha=0.6, color="steelblue")
+            ax.set_title("MAE Density: Traditional MAE - IRSL MAE", fontsize=16)
+            ax.set_xlabel("Traditional MAE - IRSL MAE", fontsize=16)
+            ax.set_ylabel("Density", fontsize=16)
+            ax.tick_params(axis="both", labelsize=12)
+            fig.tight_layout()
+            density_path = RESULTS_DIR / stem / f"{stem}_hard_mae_density.png"
+            plt.savefig(density_path, dpi=300, bbox_inches="tight")
+            plt.close(fig)
