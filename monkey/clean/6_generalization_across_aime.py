@@ -103,7 +103,7 @@ fig_w = max(4.6, 0.4 * len(model_names) + 0.8)
 fig_h = max(3.0, 0.22 * len(bench_names) + 0.6)
 with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
     fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-    im = ax.imshow(heat_vals, aspect="auto", cmap="Reds", vmin=vmin, vmax=vmax)
+    im = ax.imshow(heat_vals, aspect="auto", cmap="Blues", vmin=vmin, vmax=vmax)
     ax.set_xticks(np.arange(len(model_names)))
     ax.set_xticklabels(model_names, rotation=45, ha="right", fontsize=10)
     ax.set_yticks(np.arange(len(bench_names)))

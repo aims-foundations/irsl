@@ -113,7 +113,7 @@ fig_h = max(7, 0.6 * len(bench_names) + 2)
 split_idx = len(bench_names) - 1
 with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
     fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-    im = ax.imshow(heat_vals, aspect="auto", cmap="Reds", vmin=vmin, vmax=vmax)
+    im = ax.imshow(heat_vals, aspect="auto", cmap="Blues", vmin=vmin, vmax=vmax)
     ax.set_xticks(np.arange(len(mix_names)))
     ax.set_xticklabels(mix_names, rotation=45, ha="right", fontsize=20)
     ax.set_yticks(np.arange(len(bench_names)))

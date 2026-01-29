@@ -54,7 +54,7 @@ def plot_law_curve(output_dir, tag, filter_status, model, bench, sample_arange, 
         classic_str = f"{mae_sub_passat1:.1e}".replace("e-0", "e-").replace("e+0", "e+")
         diff_str = f"{(mae_sub_passat1 - mae_irt_beta):.1e}".replace("e-0", "e-").replace("e+0", "e+")
         fig.suptitle(
-            f"{model}, {bench}, {filter_status}\n"
+            f"{model}, {bench}\n" #, {filter_status}\n"
             f"Traditional MAE={classic_str}, IRSL MAE={beta_str}\n"
             f"Traditional MAE - IRSL MAE= {diff_str}",
             fontsize=16,
@@ -191,7 +191,7 @@ if __name__ == "__main__":
         fig_h = max(3.0, 0.22 * len(unique_benches) + 0.6)
         with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
             fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-            im = ax.imshow(vals, aspect="auto", cmap="bwr", vmin=vmin, vmax=vmax)
+            im = ax.imshow(vals, aspect="auto", cmap="bwr_r", vmin=vmin, vmax=vmax)
             ax.set_xticks(np.arange(len(test_models)))
             ax.set_xticklabels(test_models, rotation=45, ha="right", fontsize=10)
             ax.set_yticks(np.arange(len(unique_benches)))
@@ -205,7 +205,7 @@ if __name__ == "__main__":
             cbar.ax.tick_params(labelsize=10)
             ax.set_xlabel("LLM", fontsize=10)
             ax.set_ylabel("Benchmark", fontsize=10)
-            ax.set_title("MAE Difference After Filter", fontsize=10)
+            ax.set_title("MAE Difference", fontsize=10) # After Filter", fontsize=10)
             heatmap_path = RESULTS_DIR / stem / f"{stem}_heatmap.png"
             plt.savefig(heatmap_path, dpi=300, bbox_inches="tight")
             plt.close(fig)
