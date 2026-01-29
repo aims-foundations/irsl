@@ -225,17 +225,17 @@ def run_ladder(
                 # data_by_name[k1][k2] = [data_by_name[k1][k2][0][-1]]
 
     # which functional form to use for step 1 prediction
-    if 'byte' in x_metric:
-        y_metric_func = 'rc_bpb'
-    else:
-        y_metric_func = 'rc_acc'
+    # if 'byte' in x_metric:
+    y_metric_func = 'rc_bpb'
+    # else:
+    #     y_metric_func = 'rc_acc'
 
     assert len(data_by_name) != 0, train_models
-    if use_two_param:
-        assert use_flops, 'we only have a 2 param function for flops version'
+    # if use_two_param:
+    #     assert use_flops, 'we only have a 2 param function for flops version'
 
-    if use_single_step:
-        assert not run_stacked and not run_step2, 'Single step prediction will only run step 1!'
+    # if use_single_step:
+    #     assert not run_stacked and not run_step2, 'Single step prediction will only run step 1!'
 
     ax_i = 0
     if run_step1 or run_stacked:
@@ -243,61 +243,74 @@ def run_ladder(
         data_by_name = add_ladder_data_cheap_decisions(data_by_name)
         
         # Fit step 1
-        if use_single_step:
-            step1_coefficients = fit_single_step(data_by_name, y_metric_func, use_flops=use_flops)
-        elif use_flops:
-            step1_coefficients, cov = fit_step1_flops(data_by_name, y_metric_func, use_two_param=use_two_param)
-        else:
-            step1_coefficients, cov = fit_step1(data_by_name, y_metric_func)
+        # if use_single_step:
+        #     step1_coefficients = fit_single_step(data_by_name, y_metric_func, use_flops=use_flops)
+        # elif use_flops:
+        #     step1_coefficients, cov = fit_step1_flops(data_by_name, y_metric_func, use_two_param=use_two_param)
+        # else:
+        #     step1_coefficients, cov = fit_step1(data_by_name, y_metric_func)
+        step1_coefficients, cov = fit_step1_flops(data_by_name, y_metric_func, use_two_param=use_two_param)
 
-        if use_single_step:
-            (
-                predicted_data_by_name, plotted_predicted_data,
-                (step_1_y, step_1_y_pred, rel_error_step_1),
-            ) = predict_single_step(
-                # configs, data_by_name, step1_coefficients, y_metric=y_metric_func, 
-                data_by_name, step1_coefficients, use_flops=use_flops
-            )
-        elif use_flops:
-            (
-                predicted_data_by_name, plotted_predicted_data,
-                (step_1_y, step_1_y_pred, rel_error_step_1), all_rel_errors,
-            ) = predict_step1_flops(
-                configs, data_by_name, step1_coefficients, y_metric=y_metric_func, use_two_param=use_two_param
-            )
-        else:
-            (
-                predicted_data_by_name, plotted_predicted_data,
-                (step_1_y, step_1_y_pred, rel_error_step_1), all_rel_errors,
-            ) = predict_step1(
-                configs, data_by_name, step1_coefficients, y_metric=y_metric_func, 
-            )
+        # if use_single_step:
+        #     (
+        #         predicted_data_by_name, plotted_predicted_data,
+        #         (step_1_y, step_1_y_pred, rel_error_step_1),
+        #     ) = predict_single_step(
+        #         # configs, data_by_name, step1_coefficients, y_metric=y_metric_func, 
+        #         data_by_name, step1_coefficients, use_flops=use_flops
+        #     )
+        # elif use_flops:
+        #     (
+        #         predicted_data_by_name, plotted_predicted_data,
+        #         (step_1_y, step_1_y_pred, rel_error_step_1), all_rel_errors,
+        #     ) = predict_step1_flops(
+        #         configs, data_by_name, step1_coefficients, y_metric=y_metric_func, use_two_param=use_two_param
+        #     )
+        # else:
+        #     (
+        #         predicted_data_by_name, plotted_predicted_data,
+        #         (step_1_y, step_1_y_pred, rel_error_step_1), all_rel_errors,
+        #     ) = predict_step1(
+        #         configs, data_by_name, step1_coefficients, y_metric=y_metric_func, 
+        #     )
+        (
+            predicted_data_by_name, plotted_predicted_data,
+            (step_1_y, step_1_y_pred, rel_error_step_1), all_rel_errors,
+        ) = predict_step1_flops(
+            configs, data_by_name, step1_coefficients, y_metric=y_metric_func, use_two_param=use_two_param
+        )
         abs_error_step_1 = abs(step_1_y_pred - step_1_y)
 
         # Plot step 1
         if axes is not None and run_step1:
             ax = axes[ax_i]
             ax_i += 1
-            if use_single_step:
-                plot_single_step(
-                    # configs, data_by_name, predicted_data_by_name, plotted_predicted_data,
-                    # task_name, str_combined_fit(step1_coefficients), y_metric_func,
-                    # step1_coefficients, cov, ax,
-                    configs, data_by_name, predicted_data_by_name, plotted_predicted_data,
-                    task_name, str_combined_fit(step1_coefficients), use_flops, ax,
-                )
-            elif use_flops:
-                plot_step1_flops(
+            # if use_single_step:
+            #     plot_single_step(
+            #         # configs, data_by_name, predicted_data_by_name, plotted_predicted_data,
+            #         # task_name, str_combined_fit(step1_coefficients), y_metric_func,
+            #         # step1_coefficients, cov, ax,
+            #         configs, data_by_name, predicted_data_by_name, plotted_predicted_data,
+            #         task_name, str_combined_fit(step1_coefficients), use_flops, ax,
+            #     )
+            # elif use_flops:
+            #     plot_step1_flops(
+            #         configs, data_by_name, predicted_data_by_name, plotted_predicted_data,
+            #         task_name, str_chinchilla_flops_fit(step1_coefficients), y_metric_func,
+            #         step1_coefficients, cov, ax,
+            #         plot_clean=True
+            #     )
+            # else:
+            #     plot_step1(
+            #         configs, data_by_name, predicted_data_by_name, plotted_predicted_data,
+            #         task_name, str_chinchilla_n_d_fit(step1_coefficients), y_metric_func,
+            #         step1_coefficients, cov, ax,
+            #     )
+            plot_step1_flops(
                     configs, data_by_name, predicted_data_by_name, plotted_predicted_data,
                     task_name, str_chinchilla_flops_fit(step1_coefficients), y_metric_func,
                     step1_coefficients, cov, ax,
                     plot_clean=True
-                )
-            else:
-                plot_step1(
-                    configs, data_by_name, predicted_data_by_name, plotted_predicted_data,
-                    task_name, str_chinchilla_n_d_fit(step1_coefficients), y_metric_func,
-                    step1_coefficients, cov, ax,
                 )
             ax.set_ylabel(x_metric)
 
@@ -347,22 +360,30 @@ def run_ladder(
     
     if run_stacked:
         # Predict stacked
-        if use_flops:
-            (
-                predicted_data_by_name, plotted_predicted_data_by_name, 
-                (stacked_y, stacked_y_pred, rel_error_stacked)
-            ) = predict_chained_flops(
-                data_by_name, step1_coefficients, step2_coefficients, 
-                use_two_param=use_two_param, y_metric=y_metric_func,
-                extrapolate_ratio=extrapolate_ratio
-            )
-        else:
-            (
-                predicted_data_by_name, plotted_predicted_data_by_name, 
-                (stacked_y, stacked_y_pred, rel_error_stacked)
-            ) = predict_chained(
-                data_by_name, step1_coefficients, step2_coefficients, y_metric=y_metric_func, use_log_sigmoid=False
-            )
+        # if use_flops:
+        #     (
+        #         predicted_data_by_name, plotted_predicted_data_by_name, 
+        #         (stacked_y, stacked_y_pred, rel_error_stacked)
+        #     ) = predict_chained_flops(
+        #         data_by_name, step1_coefficients, step2_coefficients, 
+        #         use_two_param=use_two_param, y_metric=y_metric_func,
+        #         extrapolate_ratio=extrapolate_ratio
+        #     )
+        # else:
+        #     (
+        #         predicted_data_by_name, plotted_predicted_data_by_name, 
+        #         (stacked_y, stacked_y_pred, rel_error_stacked)
+        #     ) = predict_chained(
+        #         data_by_name, step1_coefficients, step2_coefficients, y_metric=y_metric_func, use_log_sigmoid=False
+        #     )
+        (
+            predicted_data_by_name, plotted_predicted_data_by_name, 
+            (stacked_y, stacked_y_pred, rel_error_stacked)
+        ) = predict_chained_flops(
+            data_by_name, step1_coefficients, step2_coefficients, 
+            use_two_param=use_two_param, y_metric=y_metric_func,
+            extrapolate_ratio=extrapolate_ratio
+        )
         abs_error_stacked = abs(stacked_y_pred - stacked_y)
 
         # For stacked predictions, the x axis is now the y axis
@@ -372,27 +393,37 @@ def run_ladder(
         # Plot stacked prediction
         if axes is not None:
             ax = axes[ax_i]
-            if use_flops:
-                plot_chained_flops(
-                    configs,
-                    data_by_name,
-                    predicted_data_by_name,
-                    plotted_predicted_data_by_name,
-                    task_name,
-                    str_chained_fit_flops(step1_coefficients, step2_coefficients),
-                    ax,
-                    plot_clean=True
-                )
-            else:
-                plot_chained(
-                    configs,
-                    data_by_name,
-                    predicted_data_by_name,
-                    plotted_predicted_data_by_name,
-                    task_name,
-                    str_chained_fit(step1_coefficients, step2_coefficients, use_log_sigmoid=False),
-                    ax,
-                )
+            # if use_flops:
+            #     plot_chained_flops(
+            #         configs,
+            #         data_by_name,
+            #         predicted_data_by_name,
+            #         plotted_predicted_data_by_name,
+            #         task_name,
+            #         str_chained_fit_flops(step1_coefficients, step2_coefficients),
+            #         ax,
+            #         plot_clean=True
+            #     )
+            # else:
+            #     plot_chained(
+            #         configs,
+            #         data_by_name,
+            #         predicted_data_by_name,
+            #         plotted_predicted_data_by_name,
+            #         task_name,
+            #         str_chained_fit(step1_coefficients, step2_coefficients, use_log_sigmoid=False),
+            #         ax,
+            #     )
+            plot_chained_flops(
+                configs,
+                data_by_name,
+                predicted_data_by_name,
+                plotted_predicted_data_by_name,
+                task_name,
+                str_chained_fit_flops(step1_coefficients, step2_coefficients),
+                ax,
+                plot_clean=True
+            )
             ax.legend(loc='upper left')
             ax.set_ylabel(y_metric)
 
@@ -508,39 +539,41 @@ def process_mix(mix, df_multi_index, all_models, all_tasks, setup, x_metric, y_m
     models = [model for model in all_models if '-'.join(model.split('-')[:-2]) == mix]
 
     for task in all_tasks:
-        if 'no_750M_no_530M' in setup:
-            train_models = [m for m in models if '1B' not in m and '750M' not in m and '530M' not in m]
-            eval_models = [m for m in models if '1B' in m]
-        elif 'no_750M' in setup:
-            train_models = [m for m in models if '1B' not in m and '750M' not in m]
-            eval_models = [m for m in models if '1B' in m]
-        else:
-            train_models = [m for m in models if '1B' not in m]
-            eval_models = [m for m in models if '1B' in m]
+        # if 'no_750M_no_530M' in setup:
+        #     train_models = [m for m in models if '1B' not in m and '750M' not in m and '530M' not in m]
+        #     eval_models = [m for m in models if '1B' in m]
+        # elif 'no_750M' in setup:
+        #     train_models = [m for m in models if '1B' not in m and '750M' not in m]
+        #     eval_models = [m for m in models if '1B' in m]
+        # else:
+        #     train_models = [m for m in models if '1B' not in m]
+        #     eval_models = [m for m in models if '1B' in m]
+        train_models = [m for m in models if '1B' not in m]
+        eval_models = [m for m in models if '1B' in m]
 
         assert len(train_models) != 0 and len(eval_models) != 0, f'{mix}: ({train_models}, {eval_models}) {models}'
 
-        use_helper_points = 'helper_points' in setup
-        use_single_step   = '1_step' in setup
-        use_flops         = '3_param' in setup or '2_param' in setup
-        use_two_param     = '2_param' in setup
-        use_intermediate_feature = 'intermediate' in setup
+        use_helper_points = 'helper_points' in setup # False
+        use_single_step   = '1_step' in setup # False
+        use_flops         = '3_param' in setup or '2_param' in setup # True
+        use_two_param     = '2_param' in setup # False
+        use_intermediate_feature = 'intermediate' in setup # False
 
         last_perc_step_2 = 0.9
-        if 'step2=0.5' in setup:
-            last_perc_step_2 = 0.5
+        # if 'step2=0.5' in setup:
+        #     last_perc_step_2 = 0.5
 
         run_step1, run_step2, run_stacked = True, True, True
-        if use_single_step:
-            # Only run 1 step, and have the 1 step be the downstream metric
-            run_step2, run_stacked = False, False
-            x_metric = y_metric
+        # if use_single_step:
+        #     # Only run 1 step, and have the 1 step be the downstream metric
+        #     run_step2, run_stacked = False, False
+        #     x_metric = y_metric
 
-        if use_intermediate_feature:
-            # Predict FLOPs -> [metric] -> primary_metric
-            x_metric = y_metric
-            y_metric = 'primary_metric'
-            assert use_single_step == False, 'Must be 2-step prediction!'
+        # if use_intermediate_feature:
+        #     # Predict FLOPs -> [metric] -> primary_metric
+        #     x_metric = y_metric
+        #     y_metric = 'primary_metric'
+        #     assert use_single_step == False, 'Must be 2-step prediction!'
 
         try:
             (abs_error_step_1, abs_error_step_2, abs_error_step_stacked), \
@@ -587,36 +620,54 @@ def fit_all_mixes(df, all_models, mixes, tasks, y_metrics, setups, x_metric='cor
 
     df_multi_index = df.set_index(['task', 'model']).sort_index()
 
-    # Use ProcessPoolExecutor for CPU-intensive mix processing
-    cpus = int(os.cpu_count() * 0.8)
+    # # Use ProcessPoolExecutor for CPU-intensive mix processing
+    # cpus = int(os.cpu_count() * 0.8)
+    # results = []
+    # with ProcessPoolExecutor(max_workers=cpus) as process_executor:
+    #     total_jobs = len(y_metrics)*len(setups)*len(mixes)
+
+    #     # Submit all futures upfront
+    #     futures = []
+    #     future_info = {}
+    #     for y_metric in tqdm(y_metrics, desc=f"Submitting {total_jobs} fitting jobs on {cpus} CPUs", total=len(y_metrics)):
+    #         for setup in setups:
+    #             for mix in mixes:
+    #                 future = process_executor.submit(process_mix, mix, df_multi_index, all_models, tasks, setup, x_metric, y_metric)
+    #                 futures.append(future)
+    #                 future_info[future] = (mix, y_metric, setup)
+
+    #         try:
+    #             for future in tqdm(futures, desc=f"Processing results for {y_metric}", total=total_jobs):
+    #                 result = future.result()
+    #                 mix, y_metric, setup = future_info[future]
+    #                 results.append((result, mix, y_metric, setup))
+    #                 future.done()  # Ensure all futures are complete
+    #                 del future  # Immediately remove future
+    #         finally:
+    #             for future in futures:
+    #                 future.cancel()  # Cancel any remaining futures
+    #             del futures[:]  # Free memory
+    #     process_executor.shutdown(wait=True)  # Shutdown the executor and wait for cleanup
+
+    # print(f'Done processing jobs!')
+    
+    total_jobs = len(y_metrics) * len(setups) * len(mixes)
     results = []
-    with ProcessPoolExecutor(max_workers=cpus) as process_executor:
-        total_jobs = len(y_metrics)*len(setups)*len(mixes)
+    for y_metric in tqdm(y_metrics, desc=f"Processing {total_jobs} fitting jobs", total=len(y_metrics)):
+        for setup in setups:
+            for mix in mixes:
+                result = process_mix(
+                    mix,
+                    df_multi_index,
+                    all_models,
+                    tasks,
+                    setup,
+                    x_metric,
+                    y_metric,
+                )
+                results.append((result, mix, y_metric, setup))
 
-        # Submit all futures upfront
-        futures = []
-        future_info = {}
-        for y_metric in tqdm(y_metrics, desc=f"Submitting {total_jobs} fitting jobs on {cpus} CPUs", total=len(y_metrics)):
-            for setup in setups:
-                for mix in mixes:
-                    future = process_executor.submit(process_mix, mix, df_multi_index, all_models, tasks, setup, x_metric, y_metric)
-                    futures.append(future)
-                    future_info[future] = (mix, y_metric, setup)
-
-            try:
-                for future in tqdm(futures, desc=f"Processing results for {y_metric}", total=total_jobs):
-                    result = future.result()
-                    mix, y_metric, setup = future_info[future]
-                    results.append((result, mix, y_metric, setup))
-                    future.done()  # Ensure all futures are complete
-                    del future  # Immediately remove future
-            finally:
-                for future in futures:
-                    future.cancel()  # Cancel any remaining futures
-                del futures[:]  # Free memory
-        process_executor.shutdown(wait=True)  # Shutdown the executor and wait for cleanup
-
-    print(f'Done processing jobs!')
+    print("Done processing jobs!")
 
     # Process results as they complete
     for result, mix, y_metric, setup in tqdm(results, desc='Processing all predictions', total=len(results), disable=quiet):

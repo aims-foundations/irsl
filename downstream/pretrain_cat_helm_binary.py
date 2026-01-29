@@ -98,7 +98,7 @@ if __name__ == "__main__":
 
             # irt theta on subset questions
             def _run_one(i):
-                return cat_binary_1pl(ys[i], zs, device, budget)
+                return cat_binary_1pl(ys[i], zs, device, budget)[0]
             thetass = Parallel(n_jobs=max_workers)(delayed(_run_one)(i) for i in tqdm(range(ys.shape[0])))
             thetass = torch.tensor(thetass, dtype=float).squeeze(-1)
 
