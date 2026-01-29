@@ -60,7 +60,7 @@ for bench_idx, bench in enumerate(tqdm(bench_names, desc="benches")):
                 fontsize=16,
             )
             ax.set_xlabel("FLOP", fontsize=16)
-            ax.set_ylabel("Average Probability of Correct Choice", fontsize=16)
+            ax.set_ylabel(r"$\mathrm{p_{Correct Choice}}$", fontsize=16)
             ax.set_xscale("log")
             ax.legend(fontsize=12)
             ax.tick_params(axis="both", labelsize=12)

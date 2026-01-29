@@ -119,7 +119,7 @@ if __name__ == "__main__":
                 alpha=0.5,
                 color="black",
                 linestyle="--",
-                label="Classic Acc",
+                label="Traditional Acc",
             )
             ax.plot(
                 plot_df["flop_ratio"],
@@ -129,7 +129,7 @@ if __name__ == "__main__":
                 alpha=0.5,
                 color="black",
                 linestyle="-",
-                label="Classic Prob",
+                label=r"Traditional $\mathrm{p_{Correct Choice}}$",
             )
             ax.plot(
                 plot_df["flop_ratio"],
@@ -171,7 +171,7 @@ if __name__ == "__main__":
                 linestyle="-",
                 label="Beta-IRT 2PL",
             )
-            ax.set_xlabel(r"Max $C$ for Predicting / Target $C$", fontsize=16)
+            ax.set_xlabel("Max FLOP for Predicting / Target FLOP", fontsize=16)
             ax.set_ylabel("Decision Accuracy", fontsize=16)
             ax.set_title(f"{bench}", fontsize=18)
             ax.set_xscale("log")
@@ -205,8 +205,9 @@ if __name__ == "__main__":
                     ax.scatter(flops, bpbs, color="tab:blue", alpha=0.7)
                     ax.plot(x_curve, y_curve, color="tab:blue")
                     ax.set_xlabel("FLOP", fontsize=16)
-                    ax.set_ylabel("Averge Bits-per-Bytes of Correct Choice", fontsize=16)
-                    ax.set_title(f"Classic Step1: {bench}, {mix}, Max Model Size={max_size}", fontsize=18)
+                    ax.set_ylabel(r"Benchmark-Specific Loss $L$", fontsize=16)
+                    # ax.set_title(f"Traditional Step1: {bench}, {mix}, Max Model Size={max_size}", fontsize=18)
+                    ax.set_title(f"Traditional Step1: {bench}, {mix}", fontsize=18)
                     ax.set_xscale("log")
                     ax.tick_params(axis="both", labelsize=14)
                     fig.tight_layout()
@@ -226,13 +227,14 @@ if __name__ == "__main__":
 
                 with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
                     fig, ax = plt.subplots(figsize=(8, 5))
-                    ax.scatter(bpbs, accs, color="tab:blue", alpha=0.7, label="Acc dps")
-                    ax.scatter(bpbs, probs, color="tab:red", alpha=0.7, label="Prob dps")
+                    ax.scatter(bpbs, accs, color="tab:blue", alpha=0.7, label="Empirical Acc")
+                    ax.scatter(bpbs, probs, color="tab:red", alpha=0.7, label=r"Empirical $\mathrm{p_{Correct Choice}}$")
                     ax.plot(x_curve, y_acc_curve, color="tab:blue", label="Acc Curve")
-                    ax.plot(x_curve, y_prob_curve, color="tab:red", label="Prob Curve")
-                    ax.set_xlabel("Averge Bits-per-Bytes of Correct Choice", fontsize=16)
-                    ax.set_ylabel("Accuracy / Averge Probability of Correct Choice", fontsize=16)
-                    ax.set_title(f"Classic Step2: {bench}, {mix}, Max Model Size={max_size}", fontsize=18)
+                    ax.plot(x_curve, y_prob_curve, color="tab:red", label=r"$\mathrm{p_{Correct Choice}}$ Curve")
+                    ax.set_xlabel(r"Benchmark-Specific Loss $L$", fontsize=16)
+                    ax.set_ylabel(r"Acc / $\mathrm{p_{Correct Choice}}$", fontsize=16)
+                    # ax.set_title(f"Classic Step2: {bench}, {mix}, Max Model Size={max_size}", fontsize=18)
+                    ax.set_title(f"Traditional Step2: {bench}, {mix}", fontsize=18)
                     ax.tick_params(axis="both", labelsize=14)
                     ax.legend(fontsize=12)
                     fig.tight_layout()
@@ -258,20 +260,21 @@ if __name__ == "__main__":
 
                 with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
                     fig, ax = plt.subplots(figsize=(8, 5))
-                    ax.scatter(flops, theta_binary_1pl, color="tab:blue", alpha=0.7, label="Binary 1PL dps")
-                    ax.scatter(flops, theta_beta_1pl, color="tab:red", alpha=0.7, label="Beta 1PL dps")
-                    ax.scatter(flops, theta_binary_2pl, color="tab:green", alpha=0.7, label="Binary 2PL dps")
-                    ax.scatter(flops, theta_beta_2pl, color="tab:purple", alpha=0.7, label="Beta 2PL dps")
-                    ax.plot(x_curve, y_binary_1pl_curve, color="tab:blue", label="Binary 1PL Curve")
-                    ax.plot(x_curve, y_beta_1pl_curve, color="tab:red", label="Beta 1PL Curve")
-                    ax.plot(x_curve, y_binary_2pl_curve, color="tab:green", label="Binary 2PL Curve")
-                    ax.plot(x_curve, y_beta_2pl_curve, color="tab:purple", label="Beta 2PL Curve")
+                    ax.scatter(flops, theta_binary_1pl, color="tab:blue", alpha=0.7, label=r"Empirical Binary-IRT 1PL $\theta$")
+                    ax.scatter(flops, theta_beta_1pl, color="tab:red", alpha=0.7, label=r"Empirical Beta-IRT 1PL $\theta$")
+                    ax.scatter(flops, theta_binary_2pl, color="tab:green", alpha=0.7, label=r"Empirical Binary-IRT 2PL $\theta$")
+                    ax.scatter(flops, theta_beta_2pl, color="tab:purple", alpha=0.7, label=r"Empirical Beta-IRT 2PL $\theta$")
+                    ax.plot(x_curve, y_binary_1pl_curve, color="tab:blue", label="Binary-IRT 1PL Curve")
+                    ax.plot(x_curve, y_beta_1pl_curve, color="tab:red", label="Beta-IRT 1PL Curve")
+                    ax.plot(x_curve, y_binary_2pl_curve, color="tab:green", label="Binary-IRT 2PL Curve")
+                    ax.plot(x_curve, y_beta_2pl_curve, color="tab:purple", label="Beta-IRT 2PL Curve")
                     ax.set_xlabel("FLOP", fontsize=16)
                     ax.set_ylabel(r"$\theta$", fontsize=16)
-                    ax.set_title(f"IRT Step1: {bench}, {mix}, Max Model Size={max_size}", fontsize=18)
+                    # ax.set_title(f"IRT Step1: {bench}, {mix}, Max Model Size={max_size}", fontsize=18)
+                    ax.set_title(f"IRSL Step1: {bench}, {mix}", fontsize=18)
                     ax.set_xscale("log")
                     ax.tick_params(axis="both", labelsize=14)
-                    ax.legend(fontsize=12)
+                    ax.legend(fontsize=12, framealpha=0.5)
                     fig.tight_layout()
                     fig.savefig(output_dir / "irt_step1.png", dpi=300, bbox_inches="tight")
                     plt.close(fig)
@@ -372,7 +375,7 @@ if __name__ == "__main__":
                     flop=target_flop,
                     paras=size_dict["irt"]["paras"]["step1_beta_2pl"],
                 )
-                prob_pred_2pl = expit(bench_d_2pl * (theta_pred_2pl - bench_z_2pl))
+                prob_pred_2pl = expit(bench_d_2pl * (theta_pred_2pl + bench_z_2pl))
                 rho_beta_2pl, _ = spearmanr(prob_pred_2pl, prob_gt_2pl)
 
                 with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):

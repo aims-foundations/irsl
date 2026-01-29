@@ -81,7 +81,7 @@ for mix in tqdm(sorted(set(model_data_mix)), desc="data_mix"):
             fontsize=16,
         )
         ax.set_xlabel("FLOP", fontsize=16)
-        ax.set_ylabel("Average Probability of Correct Choice", fontsize=16)
+        ax.set_ylabel(r"$\mathrm{p_{Correct Choice}}$", fontsize=16)
         ax.set_xscale("log")
         ax.legend(fontsize=12)
         ax.tick_params(axis="both", labelsize=12)
@@ -126,7 +126,7 @@ with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
     cbar = fig.colorbar(im, ax=ax, shrink=0.8)
     cbar.set_label("MAE = Abs(Hard GT - Hard Est)", fontsize=20)
     cbar.ax.tick_params(labelsize=16)
-    ax.set_xlabel("Model Data Mixture", fontsize=20)
+    ax.set_xlabel("LLM Data Mixture", fontsize=20)
     ax.set_ylabel("Benchmark", fontsize=20)
     heatmap_path = RESULTS_DIR / "hard_mae_heatmap_with_arc.png"
     fig.savefig(heatmap_path, dpi=300, bbox_inches="tight")

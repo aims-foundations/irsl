@@ -107,6 +107,38 @@ def fit_step1_irt(flops, thetas): # fn_step1_irt
 
 
 
+def trainer(parameters, optim, closure, n_iter=100, verbose=False, eps=1e-6):
+    pbar = tqdm(range(n_iter)) if verbose else range(n_iter)
+    for iteration in pbar:
+        if iteration > 0:
+            previous_parameters = [p.clone() for p in parameters]
+            previous_loss = loss.clone()
+        
+        loss = optim.step(closure)
+        
+        if iteration > 0:
+            d_loss = (previous_loss - loss).item()
+            d_parameters = sum(
+                torch.norm(prev - curr, p=2).item()
+                for prev, curr in zip(previous_parameters, parameters)
+            )
+            grad_norm = sum(torch.norm(p.grad, p=2).item() for p in parameters if p.grad is not None)
+            if verbose:
+                pbar.set_postfix({"grad_norm": grad_norm, "d_parameter": d_parameters, "d_loss": d_loss})
+            if d_loss < eps and d_parameters < eps and grad_norm < eps:
+                break
+            
+    return parameters
+
+def beta_nll(y, mu, phi):
+    a = mu * phi
+    b = (1.0 - mu) * phi
+    return -((a - 1) * torch.log(y) + (b - 1) * torch.log1p(-y) - (torch.lgamma(a) + torch.lgamma(b) - torch.lgamma(a + b)))
+
+
+
+
+
 def calibrate_1pl_z(
     resmat: torch.Tensor,
     device: str,
@@ -188,6 +220,65 @@ def calibrate_1pl_theta(
     thetas = trainer([thetas], optim_theta, closure_theta, verbose=True)[0].detach()
     return thetas.cpu().numpy()
 
+def calibrate_2pl(
+    resmat: torch.tensor,
+    device: str,
+    loss_kind: str = "beta",
+    max_epochs: int = 50,
+    max_iter_per_epoch: int = 100,
+    lr_theta: float = 0.1,
+    lr_items: float = 0.01,
+    phi: float = 10,
+    clamp_eps: float = 1e-6,
+):
+    resmat = resmat.to(device)
+    n_test_takers, n_items = resmat.shape
+    thetas = torch.randn(n_test_takers, device=device, requires_grad=True)
+    zs = torch.randn(n_items, device=device) * 0.1
+    zs.requires_grad_()
+    alphas = torch.ones(n_items, device=device) + torch.randn(n_items, device=device) * 0.1
+    alphas.requires_grad_()
+    phi_tensor = torch.tensor(phi, device=device)
+
+    if loss_kind == "beta":
+        def compute_loss(y, mu, mask):
+            y = y.clamp(clamp_eps, 1 - clamp_eps)
+            return beta_nll(y[mask], mu[mask], phi_tensor).mean()
+    elif loss_kind == "binary":
+        def compute_loss(y, mu, mask):
+            return -Bernoulli(probs=mu[mask]).log_prob(y[mask]).mean()
+    else:
+        raise ValueError(f"Unknown loss_kind: {loss_kind}")
+    
+    theta_optimizer = torch.optim.AdamW([thetas], lr=lr_theta)
+    item_optimizer = torch.optim.AdamW([alphas, zs], lr=lr_items)
+    
+    for epoch in (epoch_pbar := tqdm(range(max_epochs))):
+        # E-step: Update theta
+        for iteration in range(max_iter_per_epoch):
+            theta_optimizer.zero_grad()
+            mask = ~torch.isnan(resmat)
+            mu = torch.sigmoid(alphas[None, :] * (thetas[:, None] + zs[None, :]))
+            theta_loss = compute_loss(resmat, mu, mask)
+            theta_loss.backward()
+            theta_optimizer.step()
+        
+        # M-step: Update item parameters
+        for iteration in range(max_iter_per_epoch):
+            item_optimizer.zero_grad()
+            mask = ~torch.isnan(resmat)
+            mu = torch.sigmoid(alphas[None, :] * (thetas[:, None] + zs[None, :]))
+            item_loss = compute_loss(resmat, mu, mask)
+            item_loss.backward()
+            item_optimizer.step()
+        
+        epoch_pbar.set_postfix({"loss": float((theta_loss + item_loss).detach().cpu())})
+
+    return {
+        'theta': thetas.detach().cpu().numpy(),
+        'alpha': alphas.detach().cpu().numpy(),
+        'z': zs.detach().cpu().numpy(),
+    }
 
 
 
@@ -360,102 +451,6 @@ def _span_idxs(zs, ys, k, trim=0.10):
         idxs.append(i)
         used[i] = True
     return idxs
-
-
-
-
-
-def trainer(parameters, optim, closure, n_iter=100, verbose=False, eps=1e-6):
-    pbar = tqdm(range(n_iter)) if verbose else range(n_iter)
-    for iteration in pbar:
-        if iteration > 0:
-            previous_parameters = [p.clone() for p in parameters]
-            previous_loss = loss.clone()
-        
-        loss = optim.step(closure)
-        
-        if iteration > 0:
-            d_loss = (previous_loss - loss).item()
-            d_parameters = sum(
-                torch.norm(prev - curr, p=2).item()
-                for prev, curr in zip(previous_parameters, parameters)
-            )
-            grad_norm = sum(torch.norm(p.grad, p=2).item() for p in parameters if p.grad is not None)
-            if verbose:
-                pbar.set_postfix({"grad_norm": grad_norm, "d_parameter": d_parameters, "d_loss": d_loss})
-            if d_loss < eps and d_parameters < eps and grad_norm < eps:
-                break
-            
-    return parameters
-
-def beta_nll(y, mu, phi):
-    a = mu * phi
-    b = (1.0 - mu) * phi
-    return -((a - 1) * torch.log(y) + (b - 1) * torch.log1p(-y) - (torch.lgamma(a) + torch.lgamma(b) - torch.lgamma(a + b)))
-
-
-
-
-
-def calibrate_2pl(
-    resmat: torch.tensor,
-    device: str,
-    loss_kind: str = "beta",
-    max_epochs: int = 50,
-    max_iter_per_epoch: int = 100,
-    lr_theta: float = 0.1,
-    lr_items: float = 0.01,
-    phi: float = 10,
-    clamp_eps: float = 1e-6,
-):
-    resmat = resmat.to(device)
-    n_test_takers, n_items = resmat.shape
-    thetas = torch.randn(n_test_takers, device=device, requires_grad=True)
-    zs = torch.randn(n_items, device=device) * 0.1
-    zs.requires_grad_()
-    alphas = torch.ones(n_items, device=device) + torch.randn(n_items, device=device) * 0.1
-    alphas.requires_grad_()
-    phi_tensor = torch.tensor(phi, device=device)
-
-    if loss_kind == "beta":
-        def compute_loss(y, mu, mask):
-            y = y.clamp(clamp_eps, 1 - clamp_eps)
-            return beta_nll(y[mask], mu[mask], phi_tensor).mean()
-    elif loss_kind == "binary":
-        def compute_loss(y, mu, mask):
-            return -Bernoulli(probs=mu[mask]).log_prob(y[mask]).mean()
-    else:
-        raise ValueError(f"Unknown loss_kind: {loss_kind}")
-    
-    theta_optimizer = torch.optim.AdamW([thetas], lr=lr_theta)
-    item_optimizer = torch.optim.AdamW([alphas, zs], lr=lr_items)
-    
-    for epoch in (epoch_pbar := tqdm(range(max_epochs))):
-        # E-step: Update theta
-        for iteration in range(max_iter_per_epoch):
-            theta_optimizer.zero_grad()
-            mask = ~torch.isnan(resmat)
-            mu = torch.sigmoid(alphas[None, :] * (thetas[:, None] + zs[None, :]))
-            theta_loss = compute_loss(resmat, mu, mask)
-            theta_loss.backward()
-            theta_optimizer.step()
-        
-        # M-step: Update item parameters
-        for iteration in range(max_iter_per_epoch):
-            item_optimizer.zero_grad()
-            mask = ~torch.isnan(resmat)
-            mu = torch.sigmoid(alphas[None, :] * (thetas[:, None] + zs[None, :]))
-            item_loss = compute_loss(resmat, mu, mask)
-            item_loss.backward()
-            item_optimizer.step()
-        
-        epoch_pbar.set_postfix({"loss": float((theta_loss + item_loss).detach().cpu())})
-
-    return {
-        'theta': thetas.detach().cpu().numpy(),
-        'alpha': alphas.detach().cpu().numpy(),
-        'z': zs.detach().cpu().numpy(),
-    }
 
 
 

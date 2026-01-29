@@ -116,7 +116,7 @@ with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
     cbar = fig.colorbar(im, ax=ax, shrink=0.8)
     cbar.set_label("MAE = Abs(Hard GT - Hard Est)", fontsize=10)
     cbar.ax.tick_params(labelsize=10)
-    ax.set_xlabel("Model", fontsize=10)
+    ax.set_xlabel("LLM", fontsize=10)
     ax.set_ylabel("Benchmark", fontsize=10)
     heatmap_path = RESULTS_DIR / "hard_mae_heatmap_with_aime.png"
     fig.savefig(heatmap_path, dpi=300, bbox_inches="tight")

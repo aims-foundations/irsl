@@ -70,8 +70,8 @@ for bench in tqdm(unique_bench_names, desc="benches"):
             ax_scatter.plot([0, 1], [0, 1], linestyle="--", linewidth=1, color="black")
             ax_scatter.set_xlim(0, 1)
             ax_scatter.set_ylim(0, 1)
-            ax_scatter.set_xlabel("Beta-IRT Predicted Prob of Correct Choice", fontsize=18)
-            ax_scatter.set_ylabel("Empirical Prob of Correct Choice", fontsize=18)
+            ax_scatter.set_xlabel(r"Beta-IRT Predicted $\mathrm{p_{Correct Choice}}$", fontsize=18)
+            ax_scatter.set_ylabel(r"Empirical $\mathrm{p_{Correct Choice}}$", fontsize=18)
             ax_scatter.tick_params(axis="both", labelsize=14)
 
             ax_left.hist(bench_ys.reshape(-1), bins=30, orientation="horizontal")
@@ -110,10 +110,10 @@ for bench in tqdm(unique_bench_names, desc="benches"):
 
         with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
             plt.figure(figsize=(6, 4))
-            plt.scatter(bench_thetas, y_j, s=10, label="Empirical Prob of Correct Choice")
+            plt.scatter(bench_thetas, y_j, s=10, label=r"Empirical $\mathrm{p_{Correct Choice}}$")
             plt.plot(theta_arange, curve, color="red", label="Beta-IRT Curve")
             plt.xlabel(r"$\theta$", fontsize=14)
-            plt.ylabel("Prob of Correct Choice", fontsize=14)
+            plt.ylabel(r"$\mathrm{p_{Correct Choice}}$", fontsize=14)
             plt.ylim(0, 1)
             plt.legend(fontsize=10)
             plt.title(f"{bench}, Question {idx}", fontsize=14)

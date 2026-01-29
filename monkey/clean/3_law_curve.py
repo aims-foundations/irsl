@@ -44,8 +44,8 @@ def plot_law_curve(output_dir, tag, filter_status, model, bench, sample_arange, 
         
         fig, ax_right = plt.subplots(1, 1, figsize=(6, 6))
         ax_right.loglog(sample_arange, -np.log(pass_datk_gts), label="Ground Truth", linewidth=2, color="black")
-        ax_right.loglog(sample_arange, -np.log(pass_datk_subset_subsample_passat1), label="Classic", linestyle="--", color="blue")
-        ax_right.loglog(sample_arange, -np.log(pass_datk_irts_beta), label="Beta-IRT", linewidth=2, linestyle="--", color="red")
+        ax_right.loglog(sample_arange, -np.log(pass_datk_subset_subsample_passat1), label="Traditional", linestyle="--", color="blue")
+        ax_right.loglog(sample_arange, -np.log(pass_datk_irts_beta), label="IRSL", linewidth=2, linestyle="--", color="red")
         ax_right.set_xlabel(r"Number of Samples $k$", fontsize=16)
         ax_right.set_ylabel(r"$-\log(\mathrm{Pass@k})$", fontsize=16)
         ax_right.legend(fontsize=14)
@@ -55,8 +55,8 @@ def plot_law_curve(output_dir, tag, filter_status, model, bench, sample_arange, 
         diff_str = f"{(mae_sub_passat1 - mae_irt_beta):.1e}".replace("e-0", "e-").replace("e+0", "e+")
         fig.suptitle(
             f"{model}, {bench}, {filter_status}\n"
-            f"Classic MAE={classic_str}, Beta-IRT MAE={beta_str}\n"
-            f"Clssic MAE - Beta-IRT MAE= {diff_str}",
+            f"Traditional MAE={classic_str}, IRSL MAE={beta_str}\n"
+            f"Traditional MAE - IRSL MAE= {diff_str}",
             fontsize=16,
         )
         fig.tight_layout()
@@ -201,10 +201,10 @@ if __name__ == "__main__":
                     label = f"{vals[i, j]:.1e}".replace("e-0", "e-").replace("e+0", "e+")
                     ax.text(j, i, label, ha="center", va="center", fontsize=10)
             cbar = fig.colorbar(im, ax=ax, shrink=0.8)
-            cbar.set_label("Clssic MAE - Beta-IRT MAE", fontsize=10)
+            cbar.set_label("Traditional MAE - IRSL MAE", fontsize=10)
             cbar.ax.tick_params(labelsize=10)
-            ax.set_xlabel("Model", fontsize=10)
-            ax.set_ylabel("Dataset", fontsize=10)
+            ax.set_xlabel("LLM", fontsize=10)
+            ax.set_ylabel("Benchmark", fontsize=10)
             ax.set_title("MAE Difference After Filter", fontsize=10)
             heatmap_path = RESULTS_DIR / stem / f"{stem}_heatmap.png"
             plt.savefig(heatmap_path, dpi=300, bbox_inches="tight")
