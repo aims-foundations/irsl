@@ -10,7 +10,7 @@ from scipy.special import expit
 from tqdm import tqdm
 
 BASE_DIR = Path(__file__).resolve().parent / "data"
-sys.path.append(str(BASE_DIR.parent.parent.parent))
+sys.path.append(str(BASE_DIR.parent))
 from utils import (
     MODEL2PARA,
     recursive_defaultdict,

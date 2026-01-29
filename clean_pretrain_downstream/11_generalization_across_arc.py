@@ -13,7 +13,7 @@ bundles.icml2024()
 warnings.filterwarnings("ignore")
 
 BASE_DIR = Path(__file__).resolve().parent
-sys.path.append(str(BASE_DIR.parent.parent))
+sys.path.append(str(BASE_DIR.parent))
 from utils import calibrate_1pl_theta, calculate_flops
 
 DEVICE = "cuda:3"

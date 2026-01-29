@@ -13,7 +13,7 @@ torch.set_num_threads(1)
 bundles.icml2024()
 
 BASE_DIR = Path(__file__).resolve().parent
-sys.path.append(str(BASE_DIR.parent.parent))
+sys.path.append(str(BASE_DIR.parent))
 from utils import cat_beta_1pl, cat_beta_2pl
 DATA_DIR = BASE_DIR / "data"
 RESULTS_DIR = BASE_DIR / "results" / "2_cat"

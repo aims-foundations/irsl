@@ -9,7 +9,7 @@ torch.manual_seed(0)
 torch.set_num_threads(1)
 
 BASE_DIR = Path(__file__).resolve().parent
-sys.path.append(str(BASE_DIR.parent.parent))
+sys.path.append(str(BASE_DIR.parent))
 from utils import calibrate_1pl_z, calibrate_1pl_theta, calibrate_2pl
 
 DEVICE = "cuda:7"

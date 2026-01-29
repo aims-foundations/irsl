@@ -10,7 +10,7 @@ from scipy.stats import spearmanr
 from tqdm import tqdm
 
 BASE_DIR = Path(__file__).resolve().parent / "data"
-sys.path.append(str(BASE_DIR.parent.parent.parent))
+sys.path.append(str(BASE_DIR.parent))
 from utils import calibrate_2pl
 
 INPUT_PROB_PATH = BASE_DIR / "3_prob_matrix.parquet"

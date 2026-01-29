@@ -15,7 +15,7 @@ from huggingface_hub import snapshot_download
 import pickle
 
 BASE_DIR = Path(__file__).resolve().parent / "data"
-sys.path.append(str(BASE_DIR.parent.parent.parent))
+sys.path.append(str(BASE_DIR.parent))
 from utils import cat_beta_1pl, cat_binary_1pl, cat_beta_2pl, cat_binary_2pl
 
 N_MAX_PLOT = 50

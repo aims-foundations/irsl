@@ -12,7 +12,7 @@ from tueplots import bundles
 
 import sys
 BASE_DIR = Path(__file__).resolve().parent
-sys.path.append(str(BASE_DIR.parent.parent))
+sys.path.append(str(BASE_DIR.parent))
 from utils import compute_pass_datk_gts, compute_pass_datk_irt
 
 bundles.icml2024()

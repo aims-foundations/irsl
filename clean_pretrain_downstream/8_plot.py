@@ -14,7 +14,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 BASE_DIR = Path(__file__).resolve().parent
-sys.path.append(str(BASE_DIR.parent.parent))
+sys.path.append(str(BASE_DIR.parent))
 from utils import (
     recursive_defaultdict,
     fn_step1_classic,
