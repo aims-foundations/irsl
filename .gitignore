@@ -3,10 +3,14 @@ wandb
 
 data/
 result/
+results/
 helm/
 output/
+DataDecide-eval-instances/
+DataDecide-eval-instances_sample-evals/
 
 *.zip
+*.npz
 *.png
 *.npy
 *.pkl
@@ -29,6 +33,7 @@ __pycache__/
 
 a.ipynb
 a.py
+a.sh
 
 google-cloud-sdk/
 google-cloud-cli-linux-x86_64.tar.gz

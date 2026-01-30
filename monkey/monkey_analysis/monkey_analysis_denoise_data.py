@@ -140,7 +140,7 @@ if __name__ == "__main__":
             test_pass_datk_gts  = compute_pass_datk_gts(scores_2d, test_idxs,  max_k)
 
             # --- distributional estimator ---
-            train_pass_dist = np.array([cal_passdatk(pass_i1[train_idxs], k) for k in k_range])
+            # train_pass_dist = np.array([cal_passdatk(pass_i1[train_idxs], k) for k in k_range])
 
             # --- logistic regression estimator ---
             X_train = np.repeat(train_zs, max_k).reshape(-1, 1)
@@ -161,29 +161,30 @@ if __name__ == "__main__":
             # --- Plot pass@1 vs z ---
             with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
                 plt.figure(figsize=(6,6))
-                plt.scatter(train_zs, pass_i1[train_idxs], label="Train", alpha=0.7)
-                plt.scatter(test_zs,  pass_i1[test_idxs],  label="Test",  alpha=0.7)
+                plt.scatter(train_zs, pass_i1[train_idxs], label="Train GT", alpha=0.7)
+                plt.scatter(test_zs,  pass_i1[test_idxs],  label="Test GT",  alpha=0.7)
                 z_range = np.linspace(sub_zs.min(), sub_zs.max(), 200).reshape(-1,1)
                 lr_curve = lr.predict_proba(z_range)[:,1]
-                plt.plot(z_range, lr_curve, linestyle='-', linewidth=2, label="LR fit")
+                plt.plot(z_range, lr_curve, linestyle='-', linewidth=2, label="IRT fit")
                 plt.xlabel("$z$", fontsize=16)
-                plt.ylabel("Pass@1", fontsize=16)
+                plt.ylabel("pass@1", fontsize=16)
+                plt.tick_params(axis='both', labelsize=14)
                 plt.legend(fontsize=14)
                 plt.tight_layout()
                 plt.savefig(f"{output_dir}/passat1_vs_z_{model}_{dataset}.png", dpi=300)
 
             # --- Plot pass@k vs k with GT, distributional & LR ---
-            mse_train_dist = mean_squared_error(train_pass_datk_gts, train_pass_dist)
-            mse_test_dist  = mean_squared_error(test_pass_datk_gts,  train_pass_dist)
+            # mse_train_dist = mean_squared_error(train_pass_datk_gts, train_pass_dist)
+            # mse_test_dist  = mean_squared_error(test_pass_datk_gts,  train_pass_dist)
             mse_train_lr   = mean_squared_error(train_pass_datk_gts, train_pass_lr)
             mse_test_lr    = mean_squared_error(test_pass_datk_gts,  test_pass_lr)
             with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
                 fig, ax = plt.subplots(figsize=(8,6))
                 ax.semilogx(k_range, train_pass_datk_gts, linestyle='-',  color='blue', linewidth=2, label=f'Train GT', alpha=0.5)
                 ax.semilogx(k_range, test_pass_datk_gts,  linestyle='-',  color='red',  linewidth=2, label=f'Test GT',  alpha=0.5)
-                ax.semilogx(k_range, train_pass_dist,    linestyle='--', color='blue', label=f'Dist (Train MSE={mse_train_dist:.2e}, Test MSE={mse_test_dist:.2e})', alpha=0.5)
-                ax.semilogx(k_range, train_pass_lr,      linestyle=':',  color='blue', label=f'Train LR (MSE={mse_train_lr:.2e})', alpha=0.5)
-                ax.semilogx(k_range, test_pass_lr,       linestyle=':',  color='red',  label=f'Test LR (MSE={mse_test_lr:.2e})', alpha=0.5)
+                # ax.semilogx(k_range, train_pass_dist,    linestyle='--', color='blue', label=f'Dist (Train MSE={mse_train_dist:.2e}, Test MSE={mse_test_dist:.2e})', alpha=0.5)
+                ax.semilogx(k_range, train_pass_lr,      linestyle=':',  color='blue', label=f'Train IRT (MSE={mse_train_lr:.2e})', alpha=0.5)
+                ax.semilogx(k_range, test_pass_lr,       linestyle=':',  color='red',  label=f'Test IRT (MSE={mse_test_lr:.2e})', alpha=0.5)
                 ax.set_xlabel('$k$', fontsize=20)
                 ax.set_ylabel('pass@k', fontsize=20)
                 ax.tick_params(axis='both', labelsize=14)
@@ -195,7 +196,7 @@ if __name__ == "__main__":
             results = {
                 'train_pass_datk_gts': train_pass_datk_gts,
                 'test_pass_datk_gts':  test_pass_datk_gts,
-                'train_pass_dist':     train_pass_dist,
+                # 'train_pass_dist':     train_pass_dist,
                 'train_pass_lr':       train_pass_lr,
                 'test_pass_lr':        test_pass_lr,
             }

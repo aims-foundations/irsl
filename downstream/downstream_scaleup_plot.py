@@ -11,10 +11,10 @@ warnings.filterwarnings("ignore")
 split_method = "hardeasy_split"
 # split_method = "small_subset_split"
 # split_method = "random_28split"
-with open(f"downstream_data_{split_method}.pkl", "rb") as f:
+with open(f"downstream_binary_generalize_{split_method}.pkl", "rb") as f:
     results_dict = pickle.load(f)
 
-out_dir = f"result/downstream_{split_method}"
+out_dir = f"../result/downstream_binary_generalize_{split_method}"
 os.makedirs(out_dir, exist_ok=True)
 
 # Aggregated Bar Plot
@@ -71,50 +71,40 @@ for scenario, model_results in results_dict.items():
         clean_name = m.split("-intermediate-checkpoints")[0]
         save_dir = os.path.join(out_dir, scenario)
         os.makedirs(save_dir, exist_ok=True)
-
+        steps = steps * 300 * 1e9 / 143000 * 12 * 1e9
+        
+        train_mse_irt    = mean_squared_error(gt_ctt_train, train_irts)
+        test_mse_irt = mean_squared_error(gt_ctt_test, test_irts)
         with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
-            fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+                fig, ax = plt.subplots(figsize=(6, 3))
 
-            # ————— Left: Train
-            ax = axes[0]
-            ax.plot(steps, gt_ctt_train,
-                    linestyle='-',
-                    color='black',
-                    label='Ground truth')
-            ax.plot(steps, train_linears,
-                    linestyle='--',
-                    label='Classic')
-            ax.plot(steps, train_irts,
-                    linestyle='--',
-                    label='Rasch')
-            ax.set_xlabel("Step", fontsize=20)
-            ax.set_ylabel(f"Mean {scenario} Accuracy", fontsize=20)
-            ax.set_ylim(0, 1)
-            ax.tick_params(axis="both", labelsize=14)
-            ax.legend(fontsize=14)
-            ax.set_title('Train', fontsize=16)
+                ax.plot(steps, gt_ctt_train,
+                        color='blue',
+                        label="Train GT")
+                ax.plot(steps, gt_ctt_test,
+                        color='red',
+                        label="Test GT")
+                
+                ax.plot(steps, train_irts,
+                        color='blue',
+                        linestyle='--',
+                        label=f"Train IRT (MSE={train_mse_irt:.4f})")
+                ax.plot(steps, test_irts,
+                        color='red',
+                        linestyle='--',
+                        label=f"Test IRT (MSE={test_mse_irt:.4f})")
 
-            # ————— Right: Test
-            ax = axes[1]
-            ax.plot(steps, gt_ctt_test,
-                    linestyle='-',
-                    color='black',
-                    label='Ground truth')
-            ax.plot(steps, train_linears,  # reuse the linear fit
-                    linestyle='--',
-                    label='Classic')
-            ax.plot(steps, test_irts,
-                    linestyle='--',
-                    label='Rasch')
-            ax.set_xlabel("Step", fontsize=20)
-            ax.set_ylabel(f"Mean {scenario} Accuracy", fontsize=20)
-            ax.set_ylim(0, 1)
-            ax.tick_params(axis="both", labelsize=14)
-            ax.legend(fontsize=14)
-            ax.set_title('Test', fontsize=16)
+                # Axes formatting
+                ax.set_xscale("log")
+                ax.set_xlabel("FLOP", fontsize=20)
+                ax.set_ylabel(f"Acc", fontsize=20)
+                ax.set_ylim(0, 1)
+                ax.tick_params(axis="both", labelsize=14)
+                ax.legend(fontsize=12)
+                # ax.set_title("Train vs Test", fontsize=16)
 
-            fig.tight_layout()
-            fig.savefig(f"{save_dir}/downstream_{clean_name}.png",
-                        dpi=300,
-                        bbox_inches="tight")
-            plt.close(fig)
+                fig.tight_layout()
+                fig.savefig(f"{save_dir}/downstream_{clean_name}.png",
+                                dpi=300,
+                                bbox_inches="tight")
+                plt.close(fig)

@@ -37,8 +37,8 @@ def infer_column_types(df):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    # parser.add_argument("--repo_id", type=str, required=True)
-    parser.add_argument("--repo_id", type=str, default="LLM360/Amber")
+    parser.add_argument("--repo_id", type=str, required=True)
+    # parser.add_argument("--repo_id", type=str, default="LLM360/Amber")
     # EleutherAI/pythia-12b, EleutherAI/pythia-6.9b, EleutherAI/pythia-2.8b
     # EleutherAI/pythia-1.4b, EleutherAI/pythia-1b, EleutherAI/pythia-410m
     # EleutherAI/pythia-160m, EleutherAI/pythia-70m, EleutherAI/pythia-14m
@@ -47,7 +47,7 @@ if __name__ == "__main__":
     # HuggingFaceTB/SmolLM2-360M-intermediate-checkpoints
     # HuggingFaceTB/SmolLM2-135M-intermediate-checkpoints
     # parser.add_argument("--benchmark_dir", type=str, required=True)
-    parser.add_argument("--benchmark_dir", type=str, default="/lfs/skampere2/0/sttruong/helm/src/benchmark_output/runs")
+    parser.add_argument("--benchmark_dir", type=str, default="../../helm/src/benchmark_output/runs")
     # /lfs/skampere1/0/yuhengtu/deval/helm/src/benchmark_output/runs
     # /lfs/skampere1/0/sttruong/helm/src/benchmark_output/runs
     # /lfs/skampere2/0/sttruong/helm/src/benchmark_output/runs
@@ -56,8 +56,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     task2metric = lo("task2metric.json")
     task2metric = pd.json_normalize(task2metric)
-    # BENCHMARKS = ["classic", "mmlu", "lite"]
-    BENCHMARKS = ["classic"]
+    BENCHMARKS = ["classic", "mmlu", "lite"]
+    # BENCHMARKS = ["classic"]
     model_name = args.repo_id.split("/")[1]
     
     all_paths = []
@@ -69,7 +69,7 @@ if __name__ == "__main__":
                 subdirs = [
                     sub for sub in os.listdir(full_d_path)
                     if os.path.isdir(f"{full_d_path}/{sub}")
-                    and sub.startswith(("entity_matching", "legal_support", "raft", "civil_comments", "boolq", "imdb"))
+                    # and sub.startswith(("entity_matching", "legal_support", "raft", "civil_comments", "boolq", "imdb"))
                 ]
                 all_paths.extend([f"{full_d_path}/{sub}" for sub in subdirs])
     files = ["display_requests.json", "display_predictions.json", "run_spec.json", "instances.json", "per_instance_stats.json"]
@@ -147,15 +147,15 @@ if __name__ == "__main__":
     print("Started saving results")
     output_dir = "../data/pretrain_helm"
     os.makedirs(output_dir, exist_ok=True)
-    parts = args.benchmark_dir.split("/")
+    parts = os.path.abspath(args.benchmark_dir).split("/")
     save_path = f"{output_dir}/responses_{model_name}_{parts[4]}_{parts[2]}.pkl"
     results.to_pickle(save_path)
     
-    login()
+    login("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")
     api = HfApi()
     api.upload_file(
         path_or_fileobj=save_path,
-        path_in_repo=f"long/{save_path.split("/")[-1]}",
-        repo_id="stair-lab/irsl_downstream_resmat1",
+        path_in_repo=f"long/{save_path.split('/')[-1]}",
+        repo_id="stair-lab/irsl_downstream_resmat1_fullinfo",
         repo_type="dataset",
     )
