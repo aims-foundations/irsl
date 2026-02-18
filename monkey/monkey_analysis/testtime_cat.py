@@ -80,7 +80,7 @@ if __name__ == "__main__":
                 
         # binary-irt cat on binarymat
         def _run_one_binary(i):
-            return cat_binary_1pl(scen_binarymat[i], scen_zs, device, budget=item_budget)[0]
+            return cat_binary_1pl(scen_binarymat[i], scen_zs, device, budget=item_budget)
         thetass_binary = Parallel(n_jobs=-1)(delayed(_run_one_binary)(i) for i in tqdm(range(scen_binarymat.shape[0])))
         thetass_binary = torch.tensor(thetass_binary, dtype=torch.float) # (n_models, budget)
         final_thetas_binary = thetass_binary[:, -1]
@@ -100,7 +100,7 @@ if __name__ == "__main__":
         # beta-irt cat on probmat
         # cat_beta_1pl(scen_probmat[-1], scen_zs, device)
         def _run_one_beta(i):
-            return cat_beta_1pl(scen_probmat[i], scen_zs, device, budget=item_budget)[0]
+            return cat_beta_1pl(scen_probmat[i], scen_zs, device, budget=item_budget)
         thetass_beta = Parallel(n_jobs=-1)(delayed(_run_one_beta)(i) for i in tqdm(range(scen_probmat.shape[0])))
         thetass_beta = torch.tensor(thetass_beta, dtype=torch.float) # (n_models, budget)
         final_thetas_beta = thetass_beta[:, -1]
