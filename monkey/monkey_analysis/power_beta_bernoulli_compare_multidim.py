@@ -56,23 +56,10 @@ def simulate_prob_matrix_multidim(theta, a, z, noise_sd, rng):
     return noisy, p
 
 
-def fit_multidim_bernoulli_torch(Y, d, maxiter=1000, lr=1.0):
-    """
-    Fit multi-dimensional IRT model to binary responses using PyTorch LBFGS on GPU
-
-    Args:
-        Y: (M, N) binary response matrix
-        d: latent dimension
-        maxiter: max iterations for LBFGS
-        lr: learning rate
-
-    Returns:
-        theta: (M, d) estimated ability vectors
-        a: (N, d) estimated discrimination vectors
-        z: (N,) estimated difficulty scalars
-    """
-    M, N = Y.shape
-    Y_t = torch.tensor(Y, dtype=torch.float32, device=device)
+def fit_multidim_bernoulli_torch_single(Y_t, M, N, d, maxiter=1000, lr=1.0, seed=None):
+    """Single optimization run for Binary multi-dim IRT"""
+    if seed is not None:
+        torch.manual_seed(seed)
 
     # Initialize parameters (must be leaf tensors for optimizer)
     theta = torch.randn(M, d, device=device) * 0.1
@@ -86,59 +73,74 @@ def fit_multidim_bernoulli_torch(Y, d, maxiter=1000, lr=1.0):
 
     def closure():
         optimizer.zero_grad()
-
-        # Center z for identifiability
         z_centered = z - z.mean()
-
-        # Compute logits: (M, N)
         logits = theta @ a.T + z_centered[None, :]
         p = torch.sigmoid(logits)
-
         eps = 1e-12
         ll = torch.sum(Y_t * torch.log(p + eps) + (1 - Y_t) * torch.log(1 - p + eps))
-
-        # Regularization to help identifiability
-        reg_theta = 0.01 * torch.sum(theta ** 2)
-        reg_a = 0.01 * torch.sum(a ** 2)
-
+        # Adaptive regularization: stronger for higher dimensions
+        reg_strength = 0.01 * (1 + d / 8)  # Increases with dimension
+        reg_theta = reg_strength * torch.sum(theta ** 2)
+        reg_a = reg_strength * torch.sum(a ** 2)
         loss = -ll + reg_theta + reg_a
         loss.backward()
         return loss
 
-    optimizer.step(closure)
+    final_loss = optimizer.step(closure)
 
     with torch.no_grad():
         z_centered = z - z.mean()
+        # Compute final loss for comparison
+        logits = theta @ a.T + z_centered[None, :]
+        p = torch.sigmoid(logits)
+        eps = 1e-12
+        ll = torch.sum(Y_t * torch.log(p + eps) + (1 - Y_t) * torch.log(1 - p + eps))
+        final_loss = -ll.item()
 
     return (theta.detach().cpu().numpy(),
             a.detach().cpu().numpy(),
-            z_centered.detach().cpu().numpy())
+            z_centered.detach().cpu().numpy(),
+            final_loss)
 
 
-def fit_multidim_beta_torch(Pobs, d, phi=400.0, maxiter=1000, lr=1.0):
+def fit_multidim_bernoulli_torch(Y, d, maxiter=1000, lr=1.0, n_restarts=5):
     """
-    Fit multi-dimensional IRT model to probability matrix using Beta likelihood
+    Fit multi-dimensional IRT model to binary responses using PyTorch LBFGS on GPU
+    with multiple random restarts.
 
     Args:
-        Pobs: (M, N) observed probability matrix
+        Y: (M, N) binary response matrix
         d: latent dimension
-        phi: Beta precision parameter
         maxiter: max iterations for LBFGS
         lr: learning rate
+        n_restarts: number of random restarts
 
     Returns:
         theta: (M, d) estimated ability vectors
         a: (N, d) estimated discrimination vectors
         z: (N,) estimated difficulty scalars
     """
-    M, N = Pobs.shape
-    Pobs = np.clip(Pobs, 1e-6, 1 - 1e-6)
-    Pobs_t = torch.tensor(Pobs, dtype=torch.float32, device=device)
+    M, N = Y.shape
+    Y_t = torch.tensor(Y, dtype=torch.float32, device=device)
 
-    # Better initialization from observed probabilities
-    logit_P = np.log(Pobs / (1 - Pobs))
-    z_init = -logit_P.mean(axis=0)
-    z_init = z_init - z_init.mean()
+    best_loss = float('inf')
+    best_result = None
+
+    for restart in range(n_restarts):
+        theta, a, z, loss = fit_multidim_bernoulli_torch_single(
+            Y_t, M, N, d, maxiter, lr, seed=restart * 1000 + 42
+        )
+        if loss < best_loss:
+            best_loss = loss
+            best_result = (theta, a, z)
+
+    return best_result
+
+
+def fit_multidim_beta_torch_single(Pobs_t, M, N, d, z_init, phi=400.0, maxiter=1000, lr=1.0, seed=None):
+    """Single optimization run for Beta multi-dim IRT"""
+    if seed is not None:
+        torch.manual_seed(seed)
 
     # Initialize parameters (must be leaf tensors for optimizer)
     theta = torch.randn(M, d, device=device) * 0.1
@@ -171,9 +173,10 @@ def fit_multidim_beta_torch(Pobs, d, phi=400.0, maxiter=1000, lr=1.0):
             torch.lgamma(alpha) - torch.lgamma(beta_param) + torch.lgamma(alpha + beta_param)
         )
 
-        # Regularization
-        reg_theta = 0.01 * torch.sum(theta ** 2)
-        reg_a = 0.01 * torch.sum(a ** 2)
+        # Adaptive regularization: stronger for higher dimensions
+        reg_strength = 0.01 * (1 + d / 8)
+        reg_theta = reg_strength * torch.sum(theta ** 2)
+        reg_a = reg_strength * torch.sum(a ** 2)
 
         loss = -ll + reg_theta + reg_a
         loss.backward()
@@ -183,10 +186,64 @@ def fit_multidim_beta_torch(Pobs, d, phi=400.0, maxiter=1000, lr=1.0):
 
     with torch.no_grad():
         z_centered = z - z.mean()
+        # Compute final loss for comparison
+        logits = theta @ a.T + z_centered[None, :]
+        p = torch.sigmoid(logits)
+        p = torch.clamp(p, 1e-6, 1 - 1e-6)
+        alpha = phi * p
+        beta_param = phi * (1 - p)
+        ll = torch.sum(
+            (alpha - 1) * torch.log(Pobs_t) +
+            (beta_param - 1) * torch.log(1 - Pobs_t) -
+            torch.lgamma(alpha) - torch.lgamma(beta_param) + torch.lgamma(alpha + beta_param)
+        )
+        final_loss = -ll.item()
 
     return (theta.detach().cpu().numpy(),
             a.detach().cpu().numpy(),
-            z_centered.detach().cpu().numpy())
+            z_centered.detach().cpu().numpy(),
+            final_loss)
+
+
+def fit_multidim_beta_torch(Pobs, d, phi=400.0, maxiter=1000, lr=1.0, n_restarts=5):
+    """
+    Fit multi-dimensional IRT model to probability matrix using Beta likelihood
+    with multiple random restarts.
+
+    Args:
+        Pobs: (M, N) observed probability matrix
+        d: latent dimension
+        phi: Beta precision parameter
+        maxiter: max iterations for LBFGS
+        lr: learning rate
+        n_restarts: number of random restarts
+
+    Returns:
+        theta: (M, d) estimated ability vectors
+        a: (N, d) estimated discrimination vectors
+        z: (N,) estimated difficulty scalars
+    """
+    M, N = Pobs.shape
+    Pobs = np.clip(Pobs, 1e-6, 1 - 1e-6)
+    Pobs_t = torch.tensor(Pobs, dtype=torch.float32, device=device)
+
+    # Better initialization from observed probabilities
+    logit_P = np.log(Pobs / (1 - Pobs))
+    z_init = -logit_P.mean(axis=0)
+    z_init = z_init - z_init.mean()
+
+    best_loss = float('inf')
+    best_result = None
+
+    for restart in range(n_restarts):
+        theta, a, z, loss = fit_multidim_beta_torch_single(
+            Pobs_t, M, N, d, z_init, phi, maxiter, lr, seed=restart * 1000 + 123
+        )
+        if loss < best_loss:
+            best_loss = loss
+            best_result = (theta, a, z)
+
+    return best_result
 
 
 def recovery_z(true_z, est_z):
@@ -230,14 +287,21 @@ def recovery_prob_matrix(true_theta, true_a, true_z, est_theta, est_a, est_z):
 
 # --- Simulation parameters ---
 N = 100  # number of items
-n_reps = 10  # repetitions per condition
+n_reps = 100  # repetitions per condition (increased for smoother curves)
 noise_sd = 0.01
 
 # Range of test taker counts: 2^n for n=1 to 7
 M_values = [2, 4, 8, 16, 32, 64, 128]
 
-# Latent dimensions to test
-d_values = [1, 2, 4, 8]
+# Latent dimensions to test (including d=1 for Rasch)
+d_values = [1, 2, 4, 8, 16, 32]
+
+# For high dimensions, skip M=2 (underdetermined problem)
+def get_valid_M_values(d):
+    """Get valid M values for a given dimension - skip small M for high d"""
+    if d >= 8:
+        return [m for m in M_values if m >= 4]  # Skip M=2 for d >= 8
+    return M_values
 
 # Main RNG for generating true parameters
 rng_main = np.random.default_rng(42)
@@ -246,26 +310,31 @@ print(f"Running multi-dimensional IRT simulations...", flush=True)
 print(f"Dimensions: {d_values}", flush=True)
 print(f"M values: {M_values}", flush=True)
 print(f"Repetitions: {n_reps}", flush=True)
-print(f"Total simulations: {len(d_values) * len(M_values) * n_reps}", flush=True)
+
+# Count total simulations
+total_sims = sum(len(get_valid_M_values(d)) * n_reps for d in d_values)
+print(f"Total simulations: {total_sims}", flush=True)
 
 start_time = time.time()
 
 # Store results: dict[d] -> arrays of shape (n_reps, len(M_values))
+# Note: For high d, some M values are skipped (set to NaN)
 results = {}
 
 for d in d_values:
-    print(f"\n=== Dimension d={d} ===", flush=True)
+    valid_M = get_valid_M_values(d)
+    print(f"\n=== Dimension d={d} (M values: {valid_M}) ===", flush=True)
 
-    rmse_binary_z_all = np.zeros((n_reps, len(M_values)))
-    rmse_beta_z_all = np.zeros((n_reps, len(M_values)))
-    corr_binary_z_all = np.zeros((n_reps, len(M_values)))
-    corr_beta_z_all = np.zeros((n_reps, len(M_values)))
+    rmse_binary_z_all = np.full((n_reps, len(M_values)), np.nan)
+    rmse_beta_z_all = np.full((n_reps, len(M_values)), np.nan)
+    corr_binary_z_all = np.full((n_reps, len(M_values)), np.nan)
+    corr_beta_z_all = np.full((n_reps, len(M_values)), np.nan)
 
     # Probability matrix recovery (invariant to rotation)
-    rmse_binary_p_all = np.zeros((n_reps, len(M_values)))
-    rmse_beta_p_all = np.zeros((n_reps, len(M_values)))
-    corr_binary_p_all = np.zeros((n_reps, len(M_values)))
-    corr_beta_p_all = np.zeros((n_reps, len(M_values)))
+    rmse_binary_p_all = np.full((n_reps, len(M_values)), np.nan)
+    rmse_beta_p_all = np.full((n_reps, len(M_values)), np.nan)
+    corr_binary_p_all = np.full((n_reps, len(M_values)), np.nan)
+    corr_beta_p_all = np.full((n_reps, len(M_values)), np.nan)
 
     for rep in range(n_reps):
         # Generate true parameters for this repetition
@@ -273,6 +342,10 @@ for d in d_values:
         z_true = rng_main.normal(0, 1, size=N)
 
         for i, M in enumerate(M_values):
+            # Skip invalid M values for this dimension
+            if M not in valid_M:
+                continue
+
             # Create separate RNG for this simulation
             rng = np.random.default_rng(42 + rep * 1000 + M + d * 10000)
             theta_true = rng.normal(0, 1, size=(M, d))
@@ -303,7 +376,7 @@ for d in d_values:
             rmse_beta_p_all[rep, i] = rmse_p
             corr_beta_p_all[rep, i] = corr_p
 
-        if (rep + 1) % 5 == 0:
+        if (rep + 1) % 10 == 0:
             elapsed = time.time() - start_time
             print(f"  d={d}: Completed {rep + 1}/{n_reps} repetitions ({elapsed:.1f}s)", flush=True)
 
@@ -378,57 +451,162 @@ print(f"\nData saved to: {data_path}")
 # Plotting
 plt.rcParams.update({
     'font.family': 'serif',
-    'font.size': 10,
-    'axes.labelsize': 11,
-    'axes.titlesize': 12,
-    'xtick.labelsize': 9,
-    'ytick.labelsize': 9,
-    'legend.fontsize': 9,
-    'figure.titlesize': 13
+    'font.size': 11,
+    'axes.labelsize': 12,
+    'axes.titlesize': 13,
+    'xtick.labelsize': 10,
+    'ytick.labelsize': 10,
+    'legend.fontsize': 10,
+    'figure.titlesize': 14
 })
 
-# Create figure: 2 rows (RMSE, Corr) x len(d_values) columns
-fig, axes = plt.subplots(2, len(d_values), figsize=(4 * len(d_values), 8))
+# Create figure: 2 rows (RMSE, Corr) x 2 columns (Beta, Binary)
+# Each panel shows different dimensions as separate lines
+fig, axes = plt.subplots(2, 2, figsize=(12, 8))
 M_arr = np.array(M_values)
 
-# Colors
-color_binary = '#4169E1'  # Royal blue
-color_beta = '#E91E63'    # Pink/magenta
+# Gradient color palette from pink to blue (based on dimension)
+# Pink (#E91E63) -> Purple (#9C27B0) -> Blue (#3F51B5)
+import matplotlib.colors as mcolors
+n_dims = len(d_values)
+# Create gradient from pink to purple to blue
+pink = np.array([233, 30, 99]) / 255  # #E91E63
+purple = np.array([156, 39, 176]) / 255  # #9C27B0
+blue = np.array([63, 81, 181]) / 255  # #3F51B5
 
-for col, d in enumerate(d_values):
-    # Top row: RMSE of probability matrix (rotation-invariant)
-    ax = axes[0, col]
-    ax.errorbar(M_arr, results[d]['rmse_binary_p_mean'], yerr=results[d]['rmse_binary_p_std'],
-                fmt='o-', color=color_binary, linewidth=2, markersize=5, capsize=3, capthick=1.2,
-                label='Binary')
+gradient_colors = []
+for i, d in enumerate(d_values):
+    t = i / (n_dims - 1) if n_dims > 1 else 0
+    if t < 0.5:
+        # Pink to purple
+        color = pink + (purple - pink) * (t * 2)
+    else:
+        # Purple to blue
+        color = purple + (blue - purple) * ((t - 0.5) * 2)
+    gradient_colors.append(color)
+
+colors = {d: gradient_colors[i] for i, d in enumerate(d_values)}
+markers = {1: 'p', 2: 'o', 4: 's', 8: '^', 16: 'D', 32: 'v'}  # p = pentagon for d=1
+
+# Top-left: Beta RMSE (zoomed to 0-0.05)
+ax = axes[0, 0]
+for d in d_values:
     ax.errorbar(M_arr, results[d]['rmse_beta_p_mean'], yerr=results[d]['rmse_beta_p_std'],
-                fmt='s-', color=color_beta, linewidth=2, markersize=5, capsize=3, capthick=1.2,
-                label='Beta')
-    ax.set_title(f'd = {d}')
-    if col == 0:
-        ax.set_ylabel('RMSE of P(correct)')
-    ax.legend(loc='upper right')
-    ax.set_xticks(M_arr)
-    ax.set_xticklabels([str(m) for m in M_arr])
+                fmt=f'{markers[d]}-', color=colors[d], linewidth=2, markersize=6, capsize=3, capthick=1.2,
+                label=f'd={d}')
+ax.set_ylabel('RMSE of P(correct)')
+ax.set_title('Beta IRT')
+ax.legend(loc='upper right')
+ax.set_xticks(M_arr)
+ax.set_xticklabels([str(m) for m in M_arr])
+ax.set_ylim(0, 0.05)
 
-    # Bottom row: Correlation of probability matrix
-    ax = axes[1, col]
-    ax.errorbar(M_arr, results[d]['corr_binary_p_mean'], yerr=results[d]['corr_binary_p_std'],
-                fmt='o-', color=color_binary, linewidth=2, markersize=5, capsize=3, capthick=1.2,
-                label='Binary')
+# Top-right: Binary RMSE
+ax = axes[0, 1]
+for d in d_values:
+    ax.errorbar(M_arr, results[d]['rmse_binary_p_mean'], yerr=results[d]['rmse_binary_p_std'],
+                fmt=f'{markers[d]}-', color=colors[d], linewidth=2, markersize=6, capsize=3, capthick=1.2,
+                label=f'd={d}')
+ax.set_title('Binary IRT')
+ax.legend(loc='upper right')
+ax.set_xticks(M_arr)
+ax.set_xticklabels([str(m) for m in M_arr])
+
+# Bottom-left: Beta Correlation (zoomed to 0.9-1.0)
+ax = axes[1, 0]
+for d in d_values:
     ax.errorbar(M_arr, results[d]['corr_beta_p_mean'], yerr=results[d]['corr_beta_p_std'],
-                fmt='s-', color=color_beta, linewidth=2, markersize=5, capsize=3, capthick=1.2,
-                label='Beta')
-    ax.set_xlabel('Number of Test Takers (M)')
-    if col == 0:
-        ax.set_ylabel('Correlation (r)')
-    ax.legend(loc='lower right')
-    ax.set_xticks(M_arr)
-    ax.set_xticklabels([str(m) for m in M_arr])
-    ax.set_ylim(0, 1.05)
+                fmt=f'{markers[d]}-', color=colors[d], linewidth=2, markersize=6, capsize=3, capthick=1.2,
+                label=f'd={d}')
+ax.set_xlabel('Number of Test Takers (M)')
+ax.set_ylabel('Correlation (r)')
+ax.legend(loc='lower right')
+ax.set_xticks(M_arr)
+ax.set_xticklabels([str(m) for m in M_arr])
+ax.set_ylim(0.9, 1.005)
+
+# Bottom-right: Binary Correlation
+ax = axes[1, 1]
+for d in d_values:
+    ax.errorbar(M_arr, results[d]['corr_binary_p_mean'], yerr=results[d]['corr_binary_p_std'],
+                fmt=f'{markers[d]}-', color=colors[d], linewidth=2, markersize=6, capsize=3, capthick=1.2,
+                label=f'd={d}')
+ax.set_xlabel('Number of Test Takers (M)')
+ax.legend(loc='lower right')
+ax.set_xticks(M_arr)
+ax.set_xticklabels([str(m) for m in M_arr])
+ax.set_ylim(0, 1.05)
 
 plt.suptitle('Multi-dimensional IRT: Probability Matrix Recovery', fontsize=14)
 plt.tight_layout()
 output_path = f"{output_dir}/power_beta_bernoulli_multidim_comparison.png"
 plt.savefig(output_path, dpi=300, bbox_inches='tight')
 print(f"\nFigure saved to: {output_path}")
+
+# ============================================================================
+# Log-Log Scale Figure
+# ============================================================================
+fig_log, axes_log = plt.subplots(2, 2, figsize=(12, 8))
+
+# Top-left: Beta RMSE (log-log)
+ax = axes_log[0, 0]
+for d in d_values:
+    ax.errorbar(M_arr, results[d]['rmse_beta_p_mean'], yerr=results[d]['rmse_beta_p_std'],
+                fmt=f'{markers[d]}-', color=colors[d], linewidth=2, markersize=6, capsize=3, capthick=1.2,
+                label=f'd={d}')
+ax.set_xscale('log', base=2)
+ax.set_yscale('log')
+ax.set_ylabel('RMSE of P(correct)')
+ax.set_title('Beta IRT')
+ax.legend(loc='upper right')
+ax.set_xticks(M_arr)
+ax.set_xticklabels([str(m) for m in M_arr])
+
+# Top-right: Binary RMSE (log-log)
+ax = axes_log[0, 1]
+for d in d_values:
+    ax.errorbar(M_arr, results[d]['rmse_binary_p_mean'], yerr=results[d]['rmse_binary_p_std'],
+                fmt=f'{markers[d]}-', color=colors[d], linewidth=2, markersize=6, capsize=3, capthick=1.2,
+                label=f'd={d}')
+ax.set_xscale('log', base=2)
+ax.set_yscale('log')
+ax.set_title('Binary IRT')
+ax.legend(loc='upper right')
+ax.set_xticks(M_arr)
+ax.set_xticklabels([str(m) for m in M_arr])
+
+# Bottom-left: Beta Correlation (log-x, linear-y for 1-corr)
+ax = axes_log[1, 0]
+for d in d_values:
+    # Plot 1 - correlation to show improvement on log scale
+    one_minus_corr = 1 - np.array(results[d]['corr_beta_p_mean'])
+    ax.errorbar(M_arr, one_minus_corr, yerr=results[d]['corr_beta_p_std'],
+                fmt=f'{markers[d]}-', color=colors[d], linewidth=2, markersize=6, capsize=3, capthick=1.2,
+                label=f'd={d}')
+ax.set_xscale('log', base=2)
+ax.set_yscale('log')
+ax.set_xlabel('Number of Test Takers (M)')
+ax.set_ylabel('1 - Correlation')
+ax.legend(loc='upper right')
+ax.set_xticks(M_arr)
+ax.set_xticklabels([str(m) for m in M_arr])
+
+# Bottom-right: Binary Correlation (log-x, log for 1-corr)
+ax = axes_log[1, 1]
+for d in d_values:
+    one_minus_corr = 1 - np.array(results[d]['corr_binary_p_mean'])
+    ax.errorbar(M_arr, one_minus_corr, yerr=results[d]['corr_binary_p_std'],
+                fmt=f'{markers[d]}-', color=colors[d], linewidth=2, markersize=6, capsize=3, capthick=1.2,
+                label=f'd={d}')
+ax.set_xscale('log', base=2)
+ax.set_yscale('log')
+ax.set_xlabel('Number of Test Takers (M)')
+ax.legend(loc='upper right')
+ax.set_xticks(M_arr)
+ax.set_xticklabels([str(m) for m in M_arr])
+
+plt.suptitle('Multi-dimensional IRT: Probability Matrix Recovery (Log-Log Scale)', fontsize=14)
+plt.tight_layout()
+output_path_log = f"{output_dir}/power_beta_bernoulli_multidim_comparison_loglog.png"
+plt.savefig(output_path_log, dpi=300, bbox_inches='tight')
+print(f"Log-log figure saved to: {output_path_log}")

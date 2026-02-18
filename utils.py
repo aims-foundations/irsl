@@ -8,7 +8,111 @@ torch.manual_seed(0)
 from torch.distributions import Bernoulli
 import numpy as np
 from torch.optim import LBFGS
+from collections import defaultdict
+from scipy.stats import linregress
 
+# Optional: ladder imports (only needed for DataDecide scaling law functions)
+try:
+    from ladder.fitting.step1_flops import fit_step1 as ladder_fit_step1
+    from ladder.fitting.step2 import fit_step2 as ladder_fit_step2
+except ImportError:
+    ladder_fit_step1 = None
+    ladder_fit_step2 = None
+
+# ============================================================
+# Model constants for DataDecide scaling law analysis
+# ============================================================
+MODEL2BATCH = {
+    '4M': 32, # batch_size=32, gpus=8
+    '6M': 32,
+    '8M': 32,
+    '10M': 32,
+    '14M': 32,
+    '16M': 32,
+    '20M': 64,
+    '60M': 96,
+    '90M': 160,
+    '150M': 192,
+    '300M': 320,
+    '530M': 448,
+    '750M': 576,
+    '1B': 704
+}
+MODEL2PARA = {
+    '4M': 3_744_832,
+    '6M': 6_010_464,
+    '8M': 8_538_240,
+    '10M': 9_900_432,
+    '12M': 12_066_600,
+    '14M': 14_380_224,
+    '16M': 16_004_560,
+    '20M': 19_101_888,
+    '60M': 57_078_144,
+    '90M': 97_946_640,
+    '150M': 151_898_880,
+    '300M': 319_980_544,
+    '530M': 530_074_944,
+    '750M': 681_297_408,
+    '1B': 1_176_832_000
+}
+
+def calculate_flops(model_size: str, step: int) -> float:
+    SEQUENCE_LENGTH = 2048
+    n = float(MODEL2PARA[model_size])
+    d = float(MODEL2BATCH[model_size]) * float(step) * float(SEQUENCE_LENGTH)
+    return n * d * 6.0
+
+
+def recursive_defaultdict():
+        return defaultdict(recursive_defaultdict)
+
+def fn_step1_classic(flop, paras):
+    return np.exp(paras[0]) / flop ** paras[1] + paras[2]
+
+def fit_step1_classic(flops, bpbs): # fn_step1_classic
+    data = {
+        "all": {
+            "fs": flops,
+            "xs": bpbs,
+            "mode": "train",
+        }
+    }
+    coeffs, _ = ladder_fit_step1(data, y_metric="rc_bpb", use_two_param=False)
+    return coeffs.tolist()
+
+def fn_step2_classic(bpb, paras): # 4-parameter sigmoid
+    return paras[0] / (1 + np.exp(-paras[2] * (bpb - paras[1]))) + paras[3]
+
+def fit_step2_classic(bpbs, metrics): # fn_step2_classic
+    data = {
+        "all": {
+            "xs": bpbs,
+            "ys": metrics,
+            "mode": "train",
+        }
+    }
+    coeffs, _ = ladder_fit_step2(
+        data,
+        task_name=None,
+        y_metric="rc_bpb",
+        use_log_sigmoid=False,
+        use_helper_points=False,
+    )
+    return coeffs.tolist()
+
+def fn_step1_irt(flop, paras): # theta = a * log(flops) + b
+    return paras[0] * np.log(flop) + paras[1]
+
+def fit_step1_irt(flops, thetas): # fn_step1_irt
+    x, y = np.asarray(flops, dtype=float), np.asarray(thetas, dtype=float)
+    log_x = np.log(x)
+    res = linregress(log_x, y)
+    return [float(res.slope), float(res.intercept)]
+
+
+# ============================================================
+# Core IRT calibration
+# ============================================================
 def calibrate(
     resmat: torch.Tensor,
     device: str,
@@ -54,6 +158,111 @@ def calibrate(
 
     return torch.cat(optimized_zs).cpu().numpy()
 
+# Alias for compatibility with scripts that use the explicit name
+calibrate_1pl_z = calibrate
+
+
+def calibrate_1pl_theta(
+    resmat: torch.Tensor,
+    device: str,
+    zs: torch.Tensor,
+    eps: float = 1e-6,
+    phi: float = 10.0,
+    loss_kind: str = "beta"
+) -> np.ndarray:
+    resmat, zs = resmat.to(device), zs.to(device)
+    n_test_takers, n_items = resmat.shape
+    phi_tensor = torch.tensor(phi, device=device)
+
+    if loss_kind == "beta":
+        def compute_loss(y, mu, mask):
+            y = y.clamp(eps, 1 - eps)
+            return beta_nll(y[mask], mu[mask], phi_tensor).mean()
+    elif loss_kind == "binary":
+        def compute_loss(y, mu, mask):
+            return -Bernoulli(probs=mu[mask]).log_prob(y[mask]).mean()
+    else:
+        raise ValueError(f"Unknown loss_kind: {loss_kind}")
+
+    thetas = torch.randn(n_test_takers, requires_grad=True, device=device)
+    optim_theta = LBFGS([thetas], lr=0.1, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
+
+    def closure_theta():
+        optim_theta.zero_grad()
+        mask = ~torch.isnan(resmat)
+        mu = torch.sigmoid(thetas[:, None] + zs[None, :])
+        loss = compute_loss(resmat, mu, mask)
+        loss.backward()
+        return loss
+
+    thetas = trainer([thetas], optim_theta, closure_theta, verbose=True)[0].detach()
+    return thetas.cpu().numpy()
+
+
+def calibrate_2pl(
+    resmat: torch.tensor,
+    device: str,
+    loss_kind: str = "beta",
+    max_epochs: int = 50,
+    max_iter_per_epoch: int = 100,
+    lr_theta: float = 0.1,
+    lr_items: float = 0.01,
+    phi: float = 10,
+    clamp_eps: float = 1e-6,
+):
+    resmat = resmat.to(device)
+    n_test_takers, n_items = resmat.shape
+    thetas = torch.randn(n_test_takers, device=device, requires_grad=True)
+    zs = torch.randn(n_items, device=device) * 0.1
+    zs.requires_grad_()
+    alphas = torch.ones(n_items, device=device) + torch.randn(n_items, device=device) * 0.1
+    alphas.requires_grad_()
+    phi_tensor = torch.tensor(phi, device=device)
+
+    if loss_kind == "beta":
+        def compute_loss(y, mu, mask):
+            y = y.clamp(clamp_eps, 1 - clamp_eps)
+            return beta_nll(y[mask], mu[mask], phi_tensor).mean()
+    elif loss_kind == "binary":
+        def compute_loss(y, mu, mask):
+            return -Bernoulli(probs=mu[mask]).log_prob(y[mask]).mean()
+    else:
+        raise ValueError(f"Unknown loss_kind: {loss_kind}")
+
+    theta_optimizer = torch.optim.AdamW([thetas], lr=lr_theta)
+    item_optimizer = torch.optim.AdamW([alphas, zs], lr=lr_items)
+
+    for epoch in (epoch_pbar := tqdm(range(max_epochs))):
+        # E-step: Update theta
+        for iteration in range(max_iter_per_epoch):
+            theta_optimizer.zero_grad()
+            mask = ~torch.isnan(resmat)
+            mu = torch.sigmoid(alphas[None, :] * (thetas[:, None] + zs[None, :]))
+            theta_loss = compute_loss(resmat, mu, mask)
+            theta_loss.backward()
+            theta_optimizer.step()
+
+        # M-step: Update item parameters
+        for iteration in range(max_iter_per_epoch):
+            item_optimizer.zero_grad()
+            mask = ~torch.isnan(resmat)
+            mu = torch.sigmoid(alphas[None, :] * (thetas[:, None] + zs[None, :]))
+            item_loss = compute_loss(resmat, mu, mask)
+            item_loss.backward()
+            item_optimizer.step()
+
+        epoch_pbar.set_postfix({"loss": float((theta_loss + item_loss).detach().cpu())})
+
+    return {
+        'theta': thetas.detach().cpu().numpy(),
+        'alpha': alphas.detach().cpu().numpy(),
+        'z': zs.detach().cpu().numpy(),
+    }
+
+
+# ============================================================
+# Pass@k utility functions
+# ============================================================
 def compute_pass_iatk_gt(n: int, c: int, k: int) -> float:
     if n - c < k:
         return 1.0
@@ -90,6 +299,9 @@ def compute_pass_datk_irt(irt_probs: np.ndarray, n_samples) -> np.ndarray:
     return np.nanmean(np.vstack(per_item), axis=0)
 
 
+# ============================================================
+# Theta estimation
+# ============================================================
 def _estimate_theta_generic(theta, asked_ys, device, *,
                             logits_fn,
                             loss_kind, # "beta" or "binary"
@@ -98,7 +310,7 @@ def _estimate_theta_generic(theta, asked_ys, device, *,
     theta = theta.clone().requires_grad_(True)
     optim = torch.optim.LBFGS([theta], lr=lr, max_iter=20, history_size=10, line_search_fn="strong_wolfe")
     phi_t = torch.as_tensor(phi, device=device, dtype=torch.float)
-    
+
     def closure():
         optim.zero_grad()
         logits = logits_fn(theta)
@@ -111,10 +323,10 @@ def _estimate_theta_generic(theta, asked_ys, device, *,
             loss = -Bernoulli(probs=probs).log_prob(asked_ys).mean()
         else:
             raise ValueError(f"Unknown loss_kind: {loss_kind}")
-        
+
         loss.backward()
         return loss
-    
+
     theta = trainer([theta], optim, closure)[0]
     return theta.detach()
 
@@ -136,7 +348,7 @@ def estimate_theta_beta_2pl(theta, asked_ys, asked_discris, asked_zs, device):
     asked_ys = asked_ys.clamp(min=eps, max=1.0 - eps)
     return _estimate_theta_generic(
         theta, asked_ys, device,
-        logits_fn=lambda th: asked_discris * (th - asked_zs), 
+        logits_fn=lambda th: asked_discris * (th - asked_zs),
         loss_kind="beta"
     )
 
@@ -156,7 +368,7 @@ def estimate_theta_binary_2pl(theta, asked_ys, asked_discris, asked_zs, device):
         logits_fn=lambda th: asked_discris * (th - asked_zs),
         loss_kind="binary"
     )
-    
+
 
 def _est_wrap_beta_1pl(theta, asked_y, asked_discri, asked_z, device):
     return estimate_theta_beta_1pl(theta, asked_y, asked_z, device)
@@ -174,6 +386,9 @@ def _est_wrap_binary_2pl(theta, asked_y, asked_discri, asked_z, device):
     return estimate_theta_binary_2pl(theta, asked_y, asked_discri, asked_z, device)
 
 
+# ============================================================
+# CAT (Computerized Adaptive Testing)
+# ============================================================
 def compute_fisher_info_2pl(theta, rem_discri, rem_z):
     p = torch.sigmoid(rem_discri * (theta - rem_z))
     return p * (1 - p)
@@ -207,7 +422,7 @@ def _cat_core(ys, zs, device, estimator_fn, select_next_fn, discris=None, budget
     theta = torch.zeros(1, device=device)
     theta = estimator_fn(theta, asked_y, asked_discri, asked_z, device)
     thetas = [theta.clone().item()]
-    
+
     # phase 2: Fisher-info CAT for remaining budget
     asked = asked_y.numel()
     while asked < budget and rem_y.numel() > 0:
@@ -260,7 +475,7 @@ def cat_binary_2pl(ys, discris, zs, device, budget=50):
         ys=ys, zs=zs, device=device,
         estimator_fn=_est_wrap_binary_2pl, select_next_fn=_select_next_2pl, discris=discris, budget=budget
     )
-    
+
 
 def _span_idxs(zs, ys, k, trim=0.10):
     lo, hi = torch.quantile(zs, torch.tensor([trim, 1 - trim], device=zs.device))
@@ -276,15 +491,18 @@ def _span_idxs(zs, ys, k, trim=0.10):
     return idxs
 
 
+# ============================================================
+# Optimization and loss
+# ============================================================
 def trainer(parameters, optim, closure, n_iter=100, verbose=False, eps=1e-6):
     pbar = tqdm(range(n_iter)) if verbose else range(n_iter)
     for iteration in pbar:
         if iteration > 0:
             previous_parameters = [p.clone() for p in parameters]
             previous_loss = loss.clone()
-        
+
         loss = optim.step(closure)
-        
+
         if iteration > 0:
             d_loss = (previous_loss - loss).item()
             d_parameters = sum(
@@ -296,7 +514,7 @@ def trainer(parameters, optim, closure, n_iter=100, verbose=False, eps=1e-6):
                 pbar.set_postfix({"grad_norm": grad_norm, "d_parameter": d_parameters, "d_loss": d_loss})
             if d_loss < eps and d_parameters < eps and grad_norm < eps:
                 break
-            
+
     return parameters
 
 
@@ -315,15 +533,17 @@ def calculate_flop(s):
     traindata_size = translate_str(s.split("_")[-1])
     model_size = translate_str(s.split("_")[-2])
     return traindata_size * model_size
-    # return traindata_size * model_size / 1e21
-    
+
 
 def beta_nll(y, mu, phi):
     a = mu * phi
     b = (1.0 - mu) * phi
     return -((a - 1) * torch.log(y) + (b - 1) * torch.log1p(-y) - (torch.lgamma(a) + torch.lgamma(b) - torch.lgamma(a + b)))
-    
-    
+
+
+# ============================================================
+# Visualization
+# ============================================================
 def visualize_response_matrix(results, value, filename):
     # Extract the groups labels in the order of the columns
     group_values = results.columns.get_level_values("scenario")
@@ -368,7 +588,7 @@ def visualize_response_matrix(results, value, filename):
         # Add vertical lines at each boundary
         for b in boundaries:
             ax.axvline(x=b, color="black", linewidth=0.25, linestyle="--", alpha=0.5)
-        
+
         # Add group labels above the matrix, only if they're spaced enough apart
         for name, pos in zip(group_names, group_midpoints):
             if pos - last_label_pos >= min_spacing:
@@ -385,4 +605,3 @@ def visualize_response_matrix(results, value, filename):
         cbar.set_ticklabels(["-1", "0", "1"])
         plt.savefig(filename, dpi=600, bbox_inches="tight")
         plt.close()
-        

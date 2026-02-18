@@ -8,8 +8,8 @@ from tueplots import bundles
 bundles.icml2024()
 
 if __name__ == "__main__":
-    FILE_NAME = "irsl_testtime_resmat1"
-    # FILE_NAME = "irsl_testtime_resmat2"
+    # FILE_NAME = "irsl_testtime_resmat1"
+    FILE_NAME = "irsl_testtime_resmat2"
 
     # Note: weights_only=False is required for PyTorch 2.6+
     testtime_resmat = torch.load(f"{FILE_NAME}_withz.pt", map_location="cpu", weights_only=False)
