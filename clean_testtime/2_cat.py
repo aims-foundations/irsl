@@ -15,20 +15,23 @@ bundles.icml2024()
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.append(str(BASE_DIR.parent))
 from utils import cat_beta_1pl, cat_beta_2pl
-DATA_DIR = BASE_DIR / "data"
-RESULTS_DIR = BASE_DIR / "results" / "2_cat"
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--input-hf-repo", type=str, default="irsl_testtime_resmat2", choices=["irsl_testtime_resmat1", "irsl_testtime_resmat2"])
 parser.add_argument("--irt-model", type=str, default="1pl", choices=["1pl", "2pl"])
+parser.add_argument("--data-root", type=Path, default=BASE_DIR / "data")
+parser.add_argument("--results-root", type=Path, default=BASE_DIR / "results")
 args = parser.parse_args()
 
 DEVICE = "cpu"
 SAMPLE_BUDGET = 50
 ITEM_BUDGET = 50 if args.input_hf_repo == "irsl_testtime_resmat1" else 30
+data_dir = args.data_root
+results_dir = args.results_root / "2_cat"
+data_dir.mkdir(parents=True, exist_ok=True)
 
 irt_suffix = "_2pl" if args.irt_model == "2pl" else ""
-input_path = DATA_DIR / f"1_calibreated_{args.input_hf_repo}{irt_suffix}.pt"
+input_path = data_dir / f"1_calibreated_{args.input_hf_repo}{irt_suffix}.pt"
 payload = torch.load(input_path, map_location="cpu", weights_only=False)
 
 data_tensor = np.array(payload["data_tensor"], dtype=np.float32)
@@ -77,7 +80,7 @@ for dataset in tqdm(unique_datasets, desc="datasets"):
     )
     thetass = np.array(thetass, dtype=np.float32)
 
-    output_dir = RESULTS_DIR / f"{args.input_hf_repo}{irt_suffix}"
+    output_dir = results_dir / f"{args.input_hf_repo}{irt_suffix}"
     output_dir.mkdir(parents=True, exist_ok=True)
     n_test_takers = thetass.shape[0]
     with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
@@ -94,5 +97,5 @@ for dataset in tqdm(unique_datasets, desc="datasets"):
 
     output_dict["test_thetas"][dataset] = list(zip(test_models, thetass[:, -1]))
 
-output_path = DATA_DIR / f"2_cated_{args.input_hf_repo}{irt_suffix}.pt"
+output_path = data_dir / f"2_cated_{args.input_hf_repo}{irt_suffix}.pt"
 torch.save(output_dict, output_path)

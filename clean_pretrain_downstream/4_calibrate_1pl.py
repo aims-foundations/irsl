@@ -9,26 +9,28 @@ import torch
 from scipy.stats import spearmanr
 from tqdm import tqdm
 
-BASE_DIR = Path(__file__).resolve().parent / "data"
-sys.path.append(str(BASE_DIR.parent))
+PROJECT_ROOT = Path(__file__).resolve().parent
+BASE_DIR = PROJECT_ROOT / "data"
+sys.path.append(str(PROJECT_ROOT.parent))
 from utils import calibrate_1pl_z, calibrate_1pl_theta
 
-INPUT_PROB_PATH = BASE_DIR / "3_prob_matrix.parquet"
-INPUT_BINARY_PATH = BASE_DIR / "3_binary_matrix.parquet"
-OUTPUT_PROB_PATH = BASE_DIR / "4_prob_matrix_calibrated.parquet"
-OUTPUT_BINARY_PATH = BASE_DIR / "4_binary_matrix_calibrated.parquet"
 DRY_RUN_N_COLS = 128
 DRY_RUN_BATCH_SIZE = 32
-NON_DRY_RUN_BATCH_SIZE = 4096
-CUDAS = [0, 1]
+NON_DRY_RUN_BATCH_SIZE = 4096 # 4096
+CUDAS = [5]
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dry-run", action="store_true")
 parser.add_argument("--loss-kind", type=str, default="beta", choices=["beta", "binary"])
+parser.add_argument("--data-root", type=Path, default=BASE_DIR)
 args = parser.parse_args()
 
-input_path = INPUT_PROB_PATH if args.loss_kind == "beta" else INPUT_BINARY_PATH
-output_path = OUTPUT_PROB_PATH if args.loss_kind == "beta" else OUTPUT_BINARY_PATH
+data_root = args.data_root
+data_root.mkdir(parents=True, exist_ok=True)
+input_path = data_root / ("3_prob_matrix.parquet" if args.loss_kind == "beta" else "3_binary_matrix.parquet")
+output_path = data_root / (
+    "4_prob_matrix_calibrated.parquet" if args.loss_kind == "beta" else "4_binary_matrix_calibrated.parquet"
+)
 batch_size = DRY_RUN_BATCH_SIZE if args.dry_run else NON_DRY_RUN_BATCH_SIZE
 
 resmat_df = pd.read_parquet(input_path)
