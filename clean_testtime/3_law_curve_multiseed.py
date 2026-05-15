@@ -136,20 +136,20 @@ if __name__ == "__main__":
             fig, ax = plt.subplots(figsize=(fig_w, fig_h))
             im = ax.imshow(mean_vals, aspect="auto", cmap="bwr_r", vmin=vmin, vmax=vmax)
             ax.set_xticks(np.arange(len(col_labels)))
-            ax.set_xticklabels(col_labels, rotation=45, ha="right", fontsize=10)
+            ax.set_xticklabels(col_labels, rotation=45, ha="right", fontsize=14)
             ax.set_yticks(np.arange(len(bench_names)))
-            ax.set_yticklabels(bench_names, fontsize=10)
+            ax.set_yticklabels(bench_names, fontsize=14)
             for i in range(mean_vals.shape[0]):
                 for j in range(mean_vals.shape[1]):
                     mean_label = f"{mean_vals[i, j]:.1e}".replace("e-0", "e-").replace("e+0", "e+")
                     std_label = f"{std_vals[i, j]:.1e}".replace("e-0", "e-").replace("e+0", "e+")
-                    ax.text(j, i, f"{mean_label}\n±{std_label}", ha="center", va="center", fontsize=9)
+                    ax.text(j, i, f"{mean_label}\n±{std_label}", ha="center", va="center", fontsize=12)
             cbar = fig.colorbar(im, ax=ax, shrink=0.8)
-            cbar.set_label("Traditional MAE - IRSL MAE", fontsize=10)
-            cbar.ax.tick_params(labelsize=10)
-            ax.set_xlabel("LLM", fontsize=10)
-            ax.set_ylabel("Benchmark", fontsize=10)
-            ax.set_title("MAE Difference", fontsize=10)
+            cbar.set_label("Traditional MAE - IRSL MAE", fontsize=14)
+            cbar.ax.tick_params(labelsize=14)
+            ax.set_xlabel("LLM", fontsize=14)
+            ax.set_ylabel("Benchmark", fontsize=14)
+            ax.set_title("MAE Difference", fontsize=14)
             plt.savefig(output_dir / f"{stem}_heatmap.png", dpi=300, bbox_inches="tight")
             plt.close(fig)
 
@@ -173,20 +173,20 @@ if __name__ == "__main__":
                 if bench_idx == n_benches - 1:
                     ax.axvline(bench_mean, label="Mean", **mean_kwargs)
                     ax.axvline(0.0, label="Zero", **zero_kwargs)
-                    ax.legend(fontsize=11, loc="upper right")
+                    ax.legend(fontsize=14, loc="upper right")
                 else:
                     ax.axvline(bench_mean, **mean_kwargs)
                     ax.axvline(0.0, **zero_kwargs)
-                ax.set_title(f"{bench_name}\nmean={mean_label}, std={std_label}", fontsize=13)
+                ax.set_title(f"{bench_name}\nmean={mean_label}, std={std_label}", fontsize=16)
                 if bench_idx >= ncols:
-                    ax.set_xlabel("Traditional MAE - IRSL MAE", fontsize=12)
+                    ax.set_xlabel("Traditional MAE - IRSL MAE", fontsize=15)
                 else:
                     ax.set_xlabel("")
                 if bench_idx % ncols == 0:
-                    ax.set_ylabel("Density", fontsize=12)
+                    ax.set_ylabel("Density", fontsize=15)
                 else:
                     ax.set_ylabel("")
-                ax.tick_params(axis="both", labelsize=11)
+                ax.tick_params(axis="both", labelsize=14)
             for ax in axes[n_benches:]:
                 ax.axis("off")
             fig.tight_layout()

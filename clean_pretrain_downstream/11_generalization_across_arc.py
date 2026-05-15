@@ -131,3 +131,24 @@ with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
     heatmap_path = RESULTS_DIR / "hard_mae_heatmap_with_arc.png"
     fig.savefig(heatmap_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
+
+# density distribution of MAE = Abs(Hard GT - Hard Est)
+within_vals = heat_vals[:-1].ravel()
+cross_vals = heat_vals[-1].ravel()
+within_vals = within_vals[np.isfinite(within_vals)]
+cross_vals = cross_vals[np.isfinite(cross_vals)]
+with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
+    fig, ax = plt.subplots(figsize=(6, 4))
+    total_count = len(within_vals) + len(cross_vals)
+    within_w = np.ones_like(within_vals) / total_count if total_count > 0 else None
+    cross_w = np.ones_like(cross_vals) / total_count if total_count > 0 else None
+    ax.hist(within_vals, bins=30, density=False, weights=within_w, alpha=0.6, color="lightskyblue", label="Within-Benchmark Transfer")
+    ax.hist(cross_vals, bins=30, density=False, weights=cross_w, alpha=0.6, color="lightcoral", label="Cross-Benchmark Transfer")
+    ax.set_title("MAE Density: Abs(Hard GT - Hard Est)", fontsize=16)
+    ax.set_xlabel("MAE", fontsize=16)
+    ax.set_ylabel("Density", fontsize=16)
+    ax.tick_params(axis="both", labelsize=12)
+    ax.legend(fontsize=12)
+    fig.tight_layout()
+    fig.savefig(RESULTS_DIR / "hard_mae_density.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)

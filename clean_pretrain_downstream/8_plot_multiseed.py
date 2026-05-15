@@ -166,16 +166,16 @@ if __name__ == "__main__":
             stds = stacked.std(axis=0)
 
             for idx, (col_name, label, color, linestyle) in enumerate(plot_specs):
-                lower = np.clip(means[:, idx] - stds[:, idx], 0.0, 1.0)
-                upper = np.clip(means[:, idx] + stds[:, idx], 0.0, 1.0)
-                ax.fill_between(
-                    flop_ratio,
-                    lower,
-                    upper,
-                    color=color,
-                    alpha=0.12,
-                    linewidth=0,
-                )
+                # lower = np.clip(means[:, idx] - stds[:, idx], 0.0, 1.0)
+                # upper = np.clip(means[:, idx] + stds[:, idx], 0.0, 1.0)
+                # ax.fill_between(
+                #     flop_ratio,
+                #     lower,
+                #     upper,
+                #     color=color,
+                #     alpha=0.12,
+                #     linewidth=0,
+                # )
                 ax.plot(
                     flop_ratio,
                     means[:, idx],
@@ -189,13 +189,14 @@ if __name__ == "__main__":
                 )
 
             row_idx, col_idx = divmod(bench_idx, 5)
-            ax.set_title(f"{bench}", fontsize=16)
+            ax.set_title(f"{bench}", fontsize=26)
             ax.set_xscale("log")
-            ax.tick_params(axis="both", labelsize=11)
+            ax.tick_params(axis="x", labelsize=20)
+            ax.tick_params(axis="y", labelsize=20)
             if col_idx == 0:
-                ax.set_ylabel("Decision Accuracy", fontsize=14)
+                ax.set_ylabel("Decision Accuracy", fontsize=24)
             if row_idx == 1:
-                ax.set_xlabel("Max FLOP for Predicting / Target FLOP", fontsize=14)
+                ax.set_xlabel("Max FLOP for Predicting / Target FLOP", fontsize=18)
             if legend_handles is None:
                 legend_handles, legend_labels = ax.get_legend_handles_labels()
 
@@ -203,8 +204,8 @@ if __name__ == "__main__":
             legend_handles,
             legend_labels,
             loc="upper center",
-            ncol=3,
-            fontsize=12,
+            ncol=6,
+            fontsize=22,
             frameon=True,
             bbox_to_anchor=(0.5, 1.02),
         )
