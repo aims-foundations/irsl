@@ -13,7 +13,6 @@ DataDecide-eval-instances_sample-evals/
 
 *.zip
 *.npz
-*.png
 *.npy
 *.pkl
 *.json
