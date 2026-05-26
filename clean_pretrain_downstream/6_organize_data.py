@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -5,28 +6,36 @@ import sys
 import pickle
 rng = np.random.default_rng(0)
 
-BASE_DIR = Path(__file__).resolve().parent / "data"
-sys.path.append(str(BASE_DIR.parent))
+PROJECT_ROOT = Path(__file__).resolve().parent
+BASE_DIR = PROJECT_ROOT / "data"
+sys.path.append(str(PROJECT_ROOT.parent))
 from utils import calculate_flops
 
 BUDGET = 50
-INPUT_BINARY_1PL = BASE_DIR / "5_binary_matrix_cated.parquet"
-INPUT_BETA_1PL = BASE_DIR / "5_prob_matrix_cated.parquet"
-INPUT_BINARY_2PL = BASE_DIR / "5_binary_matrix_cated_2pl.parquet"
-INPUT_BETA_2PL = BASE_DIR / "5_prob_matrix_cated_2pl.parquet"
-INPUT_BPB = BASE_DIR / "3_bpb_matrix.parquet"
-LONG_OUTPUT_PATH = BASE_DIR / "6_long.parquet"
-DIFFICULTY_OUTPUT_PATH = BASE_DIR / "6_difficulty.pkl"
+parser = argparse.ArgumentParser()
+parser.add_argument("--data-root", type=Path, default=BASE_DIR)
+args = parser.parse_args()
 
-binary_1pl_df = pd.read_parquet(INPUT_BINARY_1PL)
+data_root = args.data_root
+data_root.mkdir(parents=True, exist_ok=True)
+
+input_binary_1pl = data_root / "5_binary_matrix_cated.parquet"
+input_beta_1pl = data_root / "5_prob_matrix_cated.parquet"
+input_binary_2pl = data_root / "5_binary_matrix_cated_2pl.parquet"
+input_beta_2pl = data_root / "5_prob_matrix_cated_2pl.parquet"
+input_bpb = data_root / "3_bpb_matrix.parquet"
+long_output_path = data_root / "6_long.parquet"
+difficulty_output_path = data_root / "6_difficulty.pkl"
+
+binary_1pl_df = pd.read_parquet(input_binary_1pl)
 binary_1pl_test_df = binary_1pl_df[binary_1pl_df.index.get_level_values("model_split") == "test"].copy()
-beta_1pl_df = pd.read_parquet(INPUT_BETA_1PL)
+beta_1pl_df = pd.read_parquet(input_beta_1pl)
 beta_1pl_test_df = beta_1pl_df[beta_1pl_df.index.get_level_values("model_split") == "test"].copy()
-binary_2pl_df = pd.read_parquet(INPUT_BINARY_2PL)
+binary_2pl_df = pd.read_parquet(input_binary_2pl)
 binary_2pl_test_df = binary_2pl_df[binary_2pl_df.index.get_level_values("model_split") == "test"].copy()
-beta_2pl_df = pd.read_parquet(INPUT_BETA_2PL)
+beta_2pl_df = pd.read_parquet(input_beta_2pl)
 beta_2pl_test_df = beta_2pl_df[beta_2pl_df.index.get_level_values("model_split") == "test"].copy()
-bpb_df = pd.read_parquet(INPUT_BPB)
+bpb_df = pd.read_parquet(input_bpb)
 bpb_test_df = bpb_df[bpb_df.index.get_level_values("model_split") == "test"].copy()
 
 question_index_names = ["bench_name", "doc_id"]
@@ -104,7 +113,7 @@ for bench in unique_bench_names:
         "binary_discrimination_2pl": binary_2pl_as[bench_mask].tolist(),
         "beta_discrimination_2pl": beta_2pl_as[bench_mask].tolist(),
     }
-with open(DIFFICULTY_OUTPUT_PATH, "wb") as f:
+with open(difficulty_output_path, "wb") as f:
     pickle.dump(difficulty_dict, f)
 
 for bench in unique_bench_names:
@@ -134,4 +143,4 @@ correct_bpb_cols = [c for c in long_df.columns if c.startswith("correct_bpb_")]
 correct_bpb_nan_mask = long_df[correct_bpb_cols].isna().any(axis=1)
 print("Rows with NaN in correct_bpb_* columns (model_data_mix, model_size, model_step, FLOP):")
 print(long_df.loc[correct_bpb_nan_mask, ["model_data_mix", "model_size", "model_step", "FLOP"]])
-long_df.to_parquet(LONG_OUTPUT_PATH)
+long_df.to_parquet(long_output_path)

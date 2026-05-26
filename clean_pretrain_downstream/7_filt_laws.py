@@ -9,8 +9,9 @@ import sys
 from scipy.special import expit
 from tqdm import tqdm
 
-BASE_DIR = Path(__file__).resolve().parent / "data"
-sys.path.append(str(BASE_DIR.parent))
+PROJECT_ROOT = Path(__file__).resolve().parent
+BASE_DIR = PROJECT_ROOT / "data"
+sys.path.append(str(PROJECT_ROOT.parent))
 from utils import (
     MODEL2PARA,
     recursive_defaultdict,
@@ -77,10 +78,6 @@ from utils import (
 #         }
 #     }
 # }
-
-INPUT_PATH = BASE_DIR / "6_long.parquet"
-DIFF_INPUT_PATH = BASE_DIR / "6_difficulty.pkl"
-OUTPUT_PATH = BASE_DIR / "7_filt_laws.pkl"
 
 def process_fit(args):
     mix, max_size, bench, df_size, max_flop, max_size_flop, difficulty_dict = args
@@ -187,12 +184,22 @@ def process_fit(args):
     }
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data-root", type=Path, default=BASE_DIR)
+    args = parser.parse_args()
+
+    data_root = args.data_root
+    data_root.mkdir(parents=True, exist_ok=True)
+    input_path = data_root / "6_long.parquet"
+    diff_input_path = data_root / "6_difficulty.pkl"
+    output_path = data_root / "7_filt_laws.pkl"
+
     output_dict = recursive_defaultdict()
     
-    with open(DIFF_INPUT_PATH, "rb") as f:
+    with open(diff_input_path, "rb") as f:
         difficulty_dict = pickle.load(f)
     
-    df_input = pd.read_parquet(INPUT_PATH)
+    df_input = pd.read_parquet(input_path)
     df_input["model_size"] = df_input["model_size"].map(MODEL2PARA).astype(int)
     unique_mixes = sorted(df_input["model_data_mix"].unique())
     unique_model_sizes = sorted(df_input["model_size"].unique())
@@ -237,5 +244,5 @@ if __name__ == "__main__":
         output_dict[bench][mix][max_size]["irt"]["pred_1B"]["binary_2pl"] = res["pred_acc_irt_binary_2pl"]
         output_dict[bench][mix][max_size]["irt"]["pred_1B"]["beta_2pl"] = res["pred_prob_irt_beta_2pl"]
     
-    with open(OUTPUT_PATH, "wb") as f:
+    with open(output_path, "wb") as f:
         pickle.dump(output_dict, f)

@@ -420,8 +420,10 @@ def _cat_core(ys, zs, device, estimator_fn, select_next_fn, discris=None, budget
     rem_discri = rem_discri[mask] if discris is not None else None
 
     theta = torch.zeros(1, device=device)
-    theta = estimator_fn(theta, asked_y, asked_discri, asked_z, device)
-    thetas = [theta.clone().item()]
+    thetas = []
+    if asked_y.numel() > 0:
+        theta = estimator_fn(theta, asked_y, asked_discri, asked_z, device)
+        thetas = [theta.clone().item()]
 
     # phase 2: Fisher-info CAT for remaining budget
     asked = asked_y.numel()
@@ -449,31 +451,31 @@ def _cat_core(ys, zs, device, estimator_fn, select_next_fn, discris=None, budget
     return thetas
 
 
-def cat_beta_1pl(ys, zs, device, budget=50):
+def cat_beta_1pl(ys, zs, device, budget=50, init_frac=0.2):
     return _cat_core(
         ys=ys, zs=zs, device=device,
-        estimator_fn=_est_wrap_beta_1pl, select_next_fn=_select_next_1pl, discris=None, budget=budget
+        estimator_fn=_est_wrap_beta_1pl, select_next_fn=_select_next_1pl, discris=None, budget=budget, init_frac=init_frac
     )
 
 
-def cat_beta_2pl(ys, discris, zs, device, budget=50):
+def cat_beta_2pl(ys, discris, zs, device, budget=50, init_frac=0.2):
     return _cat_core(
         ys=ys, zs=zs, device=device,
-        estimator_fn=_est_wrap_beta_2pl, select_next_fn=_select_next_2pl, discris=discris, budget=budget
+        estimator_fn=_est_wrap_beta_2pl, select_next_fn=_select_next_2pl, discris=discris, budget=budget, init_frac=init_frac
     )
 
 
-def cat_binary_1pl(ys, zs, device, budget=50):
+def cat_binary_1pl(ys, zs, device, budget=50, init_frac=0.2):
     return _cat_core(
         ys=ys, zs=zs, device=device,
-        estimator_fn=_est_wrap_binary_1pl, select_next_fn=_select_next_1pl, discris=None, budget=budget
+        estimator_fn=_est_wrap_binary_1pl, select_next_fn=_select_next_1pl, discris=None, budget=budget, init_frac=init_frac
     )
 
 
-def cat_binary_2pl(ys, discris, zs, device, budget=50):
+def cat_binary_2pl(ys, discris, zs, device, budget=50, init_frac=0.2):
     return _cat_core(
         ys=ys, zs=zs, device=device,
-        estimator_fn=_est_wrap_binary_2pl, select_next_fn=_select_next_2pl, discris=discris, budget=budget
+        estimator_fn=_est_wrap_binary_2pl, select_next_fn=_select_next_2pl, discris=discris, budget=budget, init_frac=init_frac
     )
 
 

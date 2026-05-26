@@ -14,8 +14,8 @@ bundles.icml2024()
 from huggingface_hub import snapshot_download
 import pickle
 
-BASE_DIR = Path(__file__).resolve().parent / "data"
-sys.path.append(str(BASE_DIR.parent))
+PROJECT_ROOT = Path(__file__).resolve().parent
+sys.path.append(str(PROJECT_ROOT.parent))
 from utils import cat_beta_1pl, cat_binary_1pl, cat_beta_2pl, cat_binary_2pl
 
 N_MAX_PLOT = 50
@@ -25,22 +25,26 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--dry-run", action="store_true")
 parser.add_argument("--loss-kind", type=str, default="beta", choices=["beta", "binary"])
 parser.add_argument("--irt-model", type=str, default="1pl", choices=["1pl", "2pl"])
+parser.add_argument("--data-root", type=Path, default=PROJECT_ROOT / "data")
+parser.add_argument("--results-root", type=Path, default=PROJECT_ROOT / "results")
 args = parser.parse_args()
 
 n_cpus = int((os.cpu_count()) * 0.8)
 print(f"Using {n_cpus} CPUs for parallel processing.")
 
 irt_suffix = "_2pl" if args.irt_model == "2pl" else ""
-plots_dir = Path(__file__).resolve().parent / "results" / f"5_cat{irt_suffix}"
+plots_dir = args.results_root / f"5_cat{irt_suffix}"
+data_root = args.data_root
+data_root.mkdir(parents=True, exist_ok=True)
 
 if args.loss_kind == "beta":
-    input_path = BASE_DIR / f"4_prob_matrix_calibrated{irt_suffix}.parquet"
-    matrix_output_path = BASE_DIR / f"5_prob_matrix_cated{irt_suffix}.parquet"
+    input_path = data_root / f"4_prob_matrix_calibrated{irt_suffix}.parquet"
+    matrix_output_path = data_root / f"5_prob_matrix_cated{irt_suffix}.parquet"
     cat_fn = cat_beta_2pl if args.irt_model == "2pl" else cat_beta_1pl
     fig_prefix = "beta"
 else:
-    input_path = BASE_DIR / f"4_binary_matrix_calibrated{irt_suffix}.parquet"
-    matrix_output_path = BASE_DIR / f"5_binary_matrix_cated{irt_suffix}.parquet"
+    input_path = data_root / f"4_binary_matrix_calibrated{irt_suffix}.parquet"
+    matrix_output_path = data_root / f"5_binary_matrix_cated{irt_suffix}.parquet"
     cat_fn = cat_binary_2pl if args.irt_model == "2pl" else cat_binary_1pl
     fig_prefix = "binary"
 os.makedirs(plots_dir, exist_ok=True)

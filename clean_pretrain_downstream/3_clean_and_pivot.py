@@ -1,21 +1,29 @@
+import argparse
 from pathlib import Path
 import random
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-BASE_DIR = Path(__file__).resolve().parent / "data"
-INPUT_PATH = BASE_DIR / "2_datadecide_long.parquet"
-OUTPUT_BINARY = BASE_DIR / "3_binary_matrix.parquet"
-OUTPUT_PROB = BASE_DIR / "3_prob_matrix.parquet"
-OUTPUT_BPB = BASE_DIR / "3_bpb_matrix.parquet"
-FIG_DIR = Path(__file__).resolve().parent / "results" / "3_clean_and_pivot"
-FIG_DIR.mkdir(parents=True, exist_ok=True)
-
+PROJECT_ROOT = Path(__file__).resolve().parent
+INPUT_PATH = PROJECT_ROOT / "data" / "2_datadecide_long.parquet"
 PROB_THRESHOLD = 0.15
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--split-seed", type=int, default=0)
+parser.add_argument("--output-root", type=Path, default=PROJECT_ROOT / "data")
+parser.add_argument("--results-root", type=Path, default=PROJECT_ROOT / "results")
+args = parser.parse_args()
+
+output_root = args.output_root
+output_root.mkdir(parents=True, exist_ok=True)
+output_binary = output_root / "3_binary_matrix.parquet"
+output_prob = output_root / "3_prob_matrix.parquet"
+output_bpb = output_root / "3_bpb_matrix.parquet"
+fig_dir = args.results_root / "3_clean_and_pivot"
+fig_dir.mkdir(parents=True, exist_ok=True)
+
 frame = pd.read_parquet(INPUT_PATH)
-breakpoint()
 
 ### 1. clean
 print("### 1. clean")
@@ -35,8 +43,11 @@ frame = frame.groupby(seed_group_cols, as_index=False).agg(agg_spec)
 
 # Split model_data_mix values into deterministic train/test buckets
 mixes = frame["model_data_mix"].unique().tolist()
-random.Random(0).shuffle(mixes)
-train_mixes, test_mixes = mixes[:5],mixes[5:]
+random.Random(args.split_seed).shuffle(mixes)
+train_mixes, test_mixes = mixes[:5], mixes[5:]
+print(f"split_seed={args.split_seed}")
+print(f"train_mixes={train_mixes}")
+print(f"test_mixes={test_mixes}")
 
 def assign_split(mix: str) -> str:
     return "train" if mix in train_mixes else "test"
@@ -102,7 +113,7 @@ for name, row_mean in [
 ]:
     plt.figure()
     plt.hist(row_mean.dropna(), bins=50, density=True)
-    plt.savefig(FIG_DIR / f"rowavg_distri_{name}.png", dpi=300, bbox_inches="tight")
+    plt.savefig(fig_dir / f"rowavg_distri_{name}.png", dpi=300, bbox_inches="tight")
     plt.close()
 
 rows_to_drop = set(prob_row_mean[prob_row_mean < PROB_THRESHOLD].index)
@@ -123,6 +134,6 @@ for name, matrix in [
     print(f"{name} shape: {matrix.shape}")
     print(f"{name} NaN: {nan_count} cells ({nan_pct:.2f}%)")
 
-binary_matrix.to_parquet(OUTPUT_BINARY)
-prob_matrix.to_parquet(OUTPUT_PROB)
-bpb_matrix.to_parquet(OUTPUT_BPB)
+binary_matrix.to_parquet(output_binary)
+prob_matrix.to_parquet(output_prob)
+bpb_matrix.to_parquet(output_bpb)

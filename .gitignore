@@ -4,6 +4,8 @@ wandb
 data/
 result/
 results/
+data_multiseed/
+results_multiseed/
 helm/
 output/
 DataDecide-eval-instances/
@@ -25,6 +27,7 @@ DataDecide-eval-instances_sample-evals/
 .env
 .RData
 .Rhistory
+.hf_cache/
 
 .ipynb_checkpoints
 */.ipynb_checkpoints/*
@@ -34,6 +37,8 @@ __pycache__/
 a.ipynb
 a.py
 a.sh
+temp_upload.py
+0_eval_vs_pretrain_flop.py
 
 google-cloud-sdk/
 google-cloud-cli-linux-x86_64.tar.gz
